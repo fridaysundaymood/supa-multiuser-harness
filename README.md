@@ -1,33 +1,15 @@
 # supa-multiuser-harness
 
-A planned local test harness for apps whose users share data through Supabase. It will verify migrations, create synthetic users and groups, run multi-device scenarios, and probe authorization and race conditions.
+A local-only Supabase test harness. It provides migration and stack operations, local identity/JWT tooling, configurable HTTP authorization and race probes, bounded reconnect-order exploration, Android debug binding and a separately versioned Kotlin simulated-device library. See [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) for verification status.
 
-Part of [android-kit](https://github.com/fridaysundaymood/android-kit); usable independently through a CLI or any MCP client, including in CI.
+## From source
 
-## Status
+Install Node.js 24, JDK 21, Android SDK platform-tools, Docker and Supabase CLI 2.x. On Windows, use Docker Desktop with WSL2 integration and keep project files on a filesystem accessible to Docker. From this repository, run `npm ci`, `npm run build`, then `node dist/cli/index.js doctor --json`. The sibling `../android-kit` repository supplies the schema package and must be built first.
 
-**Planning stage: there is no code to install yet.** See [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) for the design and milestones. The first milestone covers a local stack manager, migration verification and scheduled-job execution.
+For a project with a local Supabase configuration, run `backend stack up --json`, `backend stack verify --json`, or `backend run attacks probes.yaml --json`. Each command accepts `--project-root` and `--json`; exit codes are 0 for pass, 1 for fail/flaky, and 2 for blocked/unsupported/error. Attack and race probes currently require explicit assertions and credentials in the supplied local file: do not commit it. Do not use production data or a linked project.
 
-## Planned components
+A generic MCP client can launch `node` with arguments `["dist/mcp/index.js"]` and this repository as its working directory. MCP tools use the `backend_` prefix and the same operation parameters as the CLI.
 
-| Part | Details |
-|---|---|
-| Stack manager | Start local Supabase, compare normalized schema dumps, and test migrations over seeded data; refuse remote and linked projects |
-| Fixtures | Create synthetic users and local sign-in credentials, supporting detected legacy and current local signing configurations |
-| Safe app binding | Use a debug-only runtime guard to reject non-local endpoints, with a secondary APK dex string scan |
-| Simulated phones | Run offline, sync and convergence scenarios, with reconnect permutations bounded by a configurable cap |
-| Security and races | Exercise authorization and RPCs; repeat races with recorded seeds and failing attempts |
+The `harness-client` Gradle project is a separate Kotlin/JVM library. Include it only in debug or test configurations and route every request through its local endpoint guard. Its simulated devices are not proof of Android app integration.
 
-The core, CLI and thin stdio MCP adapter are planned in TypeScript on Node.js LTS, distributed via npm. The Android `harness-client` is a separate, independently versioned Kotlin Gradle artifact. MCP tools use the `backend_*` prefix; CLI commands provide the same operations and JSON results.
-
-## Out of scope
-
-Production-scale load testing and hosting.
-
-## Contributing
-
-The design is open for feedback. Use synthetic examples only: no private app code, production data, or credentials.
-
-## License
-
-[MIT](LICENSE)
+No telemetry is collected. See [SECURITY.md](SECURITY.md) and [CONTRIBUTING.md](CONTRIBUTING.md).
