@@ -14,7 +14,7 @@ import {
   runAutomaticAttacks,
 } from './automatic-attacks.js';
 import { readBackendConfig } from './config.js';
-import { doctor } from './doctor.js';
+import { doctorChecks } from './doctor.js';
 import { mintUser } from './identity.js';
 import {
   runCron,
@@ -33,9 +33,11 @@ import {
   runScenario,
   type ScenarioOptions,
 } from './suites.js';
+import { status as stackStatus } from './tools.js';
 
 export const operations = [
   'doctor',
+  'status',
   'stack_up',
   'stack_verify',
   'stack_at',
@@ -53,6 +55,7 @@ export async function executeOperation(
   operation: Operation,
   options: Record<string, unknown> = {},
 ): Promise<Result> {
+  if (operation === 'status') return stackStatus(options);
   const startedAt = new Date();
   const runId = newRunId();
   const projectRoot = resolve(
@@ -78,7 +81,7 @@ export async function executeOperation(
     let output: unknown;
     switch (operation) {
       case 'doctor': {
-        const checks = await doctor();
+        const checks = await doctorChecks();
         output = checks;
         if (checks.some((check) => !check.ok)) status = 'blocked';
         break;

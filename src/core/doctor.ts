@@ -3,7 +3,7 @@ import { promisify } from 'node:util';
 
 const exec = promisify(execFile);
 
-export async function doctor() {
+export async function doctorChecks() {
   const commands: Array<[string, string[], RegExp, string]> = [
     [process.execPath, ['--version'], /^v24\./m, 'Install Node.js 24 LTS'],
     [

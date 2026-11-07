@@ -9,6 +9,10 @@ export const backendSchema = {
   properties: { supabaseDir: { type: 'string', minLength: 1 } },
 };
 
+export const configSection = 'backend' as const;
+export const configSectionSchema = { type: 'object', ...backendSchema };
+export const supportedSchemaMajors = [1];
+
 export async function readBackendConfig(root: string): Promise<BackendConfig> {
   try {
     return (

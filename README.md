@@ -10,6 +10,8 @@ For a project with a local Supabase configuration, run `backend stack up --json`
 
 A generic MCP client can launch `node` with arguments `["dist/mcp/index.js"]` and this repository as its working directory. MCP tools use the `backend_` prefix and the same operation parameters as the CLI.
 
+The package root exports `toolDefinitions()`, `configSection`, `configSectionSchema`, `supportedSchemaMajors`, `doctor()`, and `status()`. Importing it does not launch MCP. `backend_status` and `status()` report the local stack's running state, local endpoint ports, and applied migration count without changing the stack; linked projects and remote endpoints are refused. The result uses the standard result envelope.
+
 The `harness-client` Gradle project is a separate Kotlin/JVM library. Include it only in debug or test configurations and route every request through its local endpoint guard. Its simulated devices are not proof of Android app integration.
 
 No telemetry is collected. See [SECURITY.md](SECURITY.md) and [CONTRIBUTING.md](CONTRIBUTING.md).
