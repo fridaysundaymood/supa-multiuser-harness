@@ -114,10 +114,7 @@ export function rewriteConfig(
   return { text: out.join('\n'), info };
 }
 
-/**
- * Copy the project's `supabase/` tree into `<root>/.android-kit/harness-stack/supabase`, rewrite
- * its config for the harness, and return that directory. The project's own `supabase/` is read only.
- */
+/** Sync project inputs into the isolated workdir without disturbing CLI state. */
 export async function prepareWorkdir(
   projectRoot: string,
   expectedId: string = harnessProjectId,
@@ -133,13 +130,17 @@ export async function prepareWorkdir(
     throw new BackendError(
       `Refusing Supabase project "${String(parsedId)}"; only "${expectedId}" may be started`,
     );
-  await rm(base, { recursive: true, force: true });
-  await mkdir(base, { recursive: true });
   const dir = join(base, 'supabase');
-  await cp(source, dir, {
-    recursive: true,
-    filter: (path) => !path.includes(join('supabase', '.temp')),
-  });
+  await mkdir(dir, { recursive: true });
+  for (const name of ['migrations', 'seeds', 'seed.sql', 'functions']) {
+    const target = join(dir, name);
+    await rm(target, { recursive: true, force: true });
+    try {
+      await cp(join(source, name), target, { recursive: true });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
+  }
   await writeFile(join(dir, 'config.toml'), rewritten.text);
   return { root: base, dir, projectId: expectedId, info: rewritten.info };
 }

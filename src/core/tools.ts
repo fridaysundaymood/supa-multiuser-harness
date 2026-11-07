@@ -3,6 +3,7 @@ import { createResult, newRunId, type Result } from '@android-kit/schema';
 import { readBackendConfig } from './config.js';
 import { executeOperation, operations } from './operations.js';
 import { assertLocalUrl, BackendError, command, localStatus } from './stack.js';
+import { prepareWorkdir } from './workdir.js';
 
 export async function status(
   options: Record<string, unknown> = {},
@@ -19,9 +20,10 @@ export async function status(
         : process.cwd(),
     );
     const config = await readBackendConfig(root);
-    const projectRoot = config.supabaseDir
+    const sourceRoot = config.supabaseDir
       ? resolve(root, config.supabaseDir)
       : root;
+    const projectRoot = (await prepareWorkdir(sourceRoot)).root;
     let endpoints: Record<string, string>;
     try {
       endpoints = await localStatus({

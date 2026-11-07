@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Preserve Supabase CLI state while refreshing isolated stack inputs, and route status and scenario discovery through the isolated workdir.
 - Develop the local backend harness and independently versioned Kotlin client.
 - Verify local schema drift against a fresh migration apply and exercise the debug-only app binding on a fixture build.
 - Fix PostgreSQL client argument ordering on Windows for seeding, cron, and status.

@@ -68,6 +68,7 @@ const STACK_OPERATIONS = new Set<string>([
   'stack_migrate',
   'stack_serve_functions',
   'mint_user',
+  'init_scenario',
   'default_suite',
   'run_scenario',
   'run_attacks',
