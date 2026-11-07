@@ -15,6 +15,7 @@ import {
   stackMigrate,
   stackSeed,
   stackVerify,
+  startupPortConflict,
 } from '../src/core/stack.js';
 import { status } from '../src/core/tools.js';
 
@@ -59,6 +60,15 @@ describe('local stack safety', () => {
     await expect(
       command('backend-missing-executable', ['secret-value'], '.'),
     ).rejects.toThrow('backend-missing-executable command failed');
+  });
+
+  it('reports a synthetic occupied startup port without exposing stderr', () => {
+    const error = startupPortConflict('secret-value: Bind for 0.0.0.0:12345 failed: port is already allocated');
+    expect(error).toBeInstanceOf(BackendError);
+    expect(error?.message).toContain('12345');
+    expect(error?.message).toContain('supabase/config.toml');
+    expect(error?.message).not.toContain('secret-value');
+    expect(startupPortConflict('unrelated failure')).toBeUndefined();
   });
 
   it.skipIf(!process.env.BACKEND_VERIFY_FIXTURE)(

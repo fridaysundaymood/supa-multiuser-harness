@@ -27,6 +27,11 @@ export interface StackOptions {
   projectRoot: string;
   linked?: boolean;
 }
+export function startupPortConflict(stderr: string): BackendError | undefined {
+  const conflict = stderr.match(/Bind for (?:\[[^\]]+\]|[\d.]+):(\d{1,5}) failed: port is already allocated/i);
+  return conflict ? new BackendError(`Local port ${conflict[1]} is already allocated; choose a free port in supabase/config.toml`) : undefined;
+}
+
 
 export async function command(
   program: string,
@@ -41,7 +46,12 @@ export async function command(
         windowsHide: true,
       })
     ).stdout;
-  } catch {
+  } catch (error) {
+    const stderr = error && typeof error === 'object' && 'stderr' in error ? error.stderr : undefined;
+    if (program === 'supabase' && args[0] === 'start' && typeof stderr === 'string') {
+      const conflict = startupPortConflict(stderr);
+      if (conflict) throw conflict;
+    }
     throw new Error(`${program} command failed`);
   }
 }
