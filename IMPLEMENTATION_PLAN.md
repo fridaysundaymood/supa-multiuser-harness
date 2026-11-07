@@ -6,7 +6,7 @@ Testing multi-user synchronization through a Supabase relay requires repeatable 
 
 ## Goal and status
 
-Implement a reusable harness for verified local Supabase backends, synthetic multi-user fixtures, safely bound Android test builds, and authorization and race scenarios. Production-scale load testing and hosting are out of scope. M1-M5 implementation is in progress; local-stack integration remains blocked by Supabase image downloads timing out after 900 seconds.
+Implement a reusable harness for verified local Supabase backends, synthetic multi-user fixtures, safely bound Android test builds, and authorization and race scenarios. Production-scale load testing and hosting are out of scope. Clean and defective fixture integration has run against a local stack; see milestone status below for remaining verification.
 
 ## Architecture and contracts
 
@@ -47,13 +47,14 @@ Read only the optional `backend` section of `android-kit.yaml`, validated using 
 
 `backend_doctor`, `backend_stack_up`, `backend_stack_verify`, `backend_stack_at`, `backend_stack_seed`, `backend_stack_migrate`, `backend_stack_serve_functions`, `backend_mint_user`, `backend_run_scenario`, `backend_run_attacks`, `backend_run_races`, `backend_run_cron`, each with CLI equivalent.
 
-1. **M1:** core, CLI, MCP, schema/config, doctor and guidance implemented. Migration verify/seed/migrate/cron code present; scratch verification remains unrun.
+1. **M1:** core, CLI, MCP, schema/config, doctor and guidance implemented. Live fixture migration verification passed for the clean schema and detected an intentional schema drift; seed/migrate/cron code remains to be exercised end to end.
 2. **M2:** scenario DSL and JWT signing detection implemented; real auth flow supported. Signing unit coverage passes; local identity/API-key family integration remains unverified.
 3. **M3:** configurable role/tamper/expiry/cross-group probes and race runner implemented. Live clean fixture passes; defects migration detected cross-board disclosure and lost updates.
-4. **M4:** debug runtime guard, APK dex scan and versioned Kotlin client implemented. JVM local tests and live clean-fixture 2/3-device tests pass; cleanRelease R8 build and DEX scan completed. DEX findings are diagnostic only.
+4. **M4:** debug runtime guard, APK dex scan and versioned Kotlin client implemented. A disposable guarded fixture passed its debug transport JVM test and built a minified debug APK and R8 release APK. The debug DEX scan found the local endpoint and external URL candidates; the release scan found no local endpoint. No device was available for instrumentation. DEX findings are diagnostic only.
 5. **M5:** bounded permutation reporting and cross-platform CI implemented. CI matrix itself not run.
 
 ## Kit compatibility
+
 Stack stopped with `--no-backup`; `docker ps -a --filter name=ak-harness` returned no containers.
 
 Verified: lint/build and 23 TypeScript tests pass; 5 standalone JVM tests pass; 2 live JVM integration tests pass on clean fixture. Defect integration detected both seeded issues.

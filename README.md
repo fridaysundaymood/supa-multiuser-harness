@@ -14,4 +14,8 @@ The package root exports `toolDefinitions()`, `configSection`, `configSectionSch
 
 The `harness-client` Gradle project is a separate Kotlin/JVM library. Include it only in debug or test configurations and route every request through its local endpoint guard. Its simulated devices are not proof of Android app integration.
 
+Generate an overlay with the library API `writeAppBinding(directory, localUrl, apiKey)`. Apply the returned `binding.gradle` to the Android app module and supply `-PHARNESS_BINDING_DIR=<directory>` to Gradle. The overlay configures debug only; it does not route the app's network client through the guard. Add `harness-client` to debug/test dependencies and explicitly call `LocalEndpointGuard.open` for the actual request. Keep the generated properties private.
+
+`scanApkDex` reports local and non-local URL candidates, not proven backend destinations. A clean scan cannot prove runtime safety; R8 and constructed strings can hide endpoints.
+
 No telemetry is collected. See [SECURITY.md](SECURITY.md) and [CONTRIBUTING.md](CONTRIBUTING.md).

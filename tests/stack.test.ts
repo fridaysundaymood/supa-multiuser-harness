@@ -1,10 +1,16 @@
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   assertLocalUrl,
   BackendError,
+  command,
+  localStatus,
   normalizeDump,
   stackAt,
   stackMigrate,
+  stackVerify,
 } from '../src/core/stack.js';
 
 describe('local stack safety', () => {
@@ -43,4 +49,74 @@ describe('local stack safety', () => {
       normalizeDump('CREATE TABLE x (id int);'),
     );
   });
+
+  it('does not include command arguments in errors', async () => {
+    await expect(
+      command('backend-missing-executable', ['secret-value'], '.'),
+    ).rejects.toThrow('backend-missing-executable command failed');
+  });
+
+  it.skipIf(!process.env.BACKEND_VERIFY_FIXTURE)(
+    'compares a clean local fixture and reports schema drift',
+    async () => {
+      const projectRoot = process.env.BACKEND_VERIFY_FIXTURE as string;
+      const text = await readFile(
+        join(projectRoot, 'supabase', 'config.toml'),
+        'utf8',
+      );
+      if (!/^project_id\s*=\s*["']ak-harness["']/m.test(text))
+        throw new Error(
+          'Integration test requires the owned ak-harness project',
+        );
+      await localStatus({ projectRoot });
+      const artifactDir = await mkdtemp(join(tmpdir(), 'backend-verify-test-'));
+      let altered = false;
+      try {
+        const clean = await stackVerify({ projectRoot, artifactDir });
+        expect(clean).toMatchObject({ matches: true, missing: [] });
+        await command(
+          'docker',
+          [
+            'exec',
+            'supabase_db_ak-harness',
+            'psql',
+            '-U',
+            'postgres',
+            '-d',
+            'postgres',
+            '-v',
+            'ON_ERROR_STOP=1',
+            '-c',
+            'ALTER TABLE public.tasks ADD COLUMN harness_drift_test text',
+          ],
+          projectRoot,
+        );
+        altered = true;
+        const drift = await stackVerify({ projectRoot, artifactDir });
+        expect(drift.matches).toBe(false);
+        expect(await readFile(drift.diff as string, 'utf8')).toContain(
+          'harness_drift_test',
+        );
+      } finally {
+        if (altered)
+          await command(
+            'docker',
+            [
+              'exec',
+              'supabase_db_ak-harness',
+              'psql',
+              '-U',
+              'postgres',
+              '-d',
+              'postgres',
+              '-c',
+              'ALTER TABLE public.tasks DROP COLUMN harness_drift_test',
+            ],
+            projectRoot,
+          );
+        await rm(artifactDir, { recursive: true, force: true });
+      }
+    },
+    1_200_000,
+  );
 });

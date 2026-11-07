@@ -34,7 +34,7 @@ export function requireLocalEndpoint(endpoint: string): URL {
   return url;
 }
 
-/** Writes a debug-only source overlay and an explicitly applied Kotlin Gradle script. */
+/** Writes a debug-only source overlay and an explicitly applied Gradle script. */
 export async function writeAppBinding(
   directory: string,
   endpoint: string,
@@ -46,7 +46,7 @@ export async function writeAppBinding(
   directory = resolve(directory);
   const debug = join(directory, 'debug');
   await mkdir(join(debug, 'res', 'xml'), { recursive: true });
-  const gradleScript = join(directory, 'binding.gradle.kts');
+  const gradleScript = join(directory, 'binding.gradle');
   const properties = join(directory, 'binding.properties');
   const escapeProperty = (value: string) =>
     value.replace(/\\/g, '\\\\').replace(/([:=#!])/g, '\\$1');
@@ -57,7 +57,7 @@ export async function writeAppBinding(
   );
   await writeFile(
     gradleScript,
-    `import java.util.Properties\nimport com.android.build.api.dsl.ApplicationExtension\n\nval harnessDirectory = file(providers.gradleProperty("HARNESS_BINDING_DIR").get())\nval harnessProperties = Properties().apply { harnessDirectory.resolve("binding.properties").inputStream().use { load(it) } }\nfun harnessLiteral(value: String): String = "\\"" + value.replace("\\\\", "\\\\\\\\").replace("\\"", "\\\\\\"") + "\\""\n\nextensions.configure<ApplicationExtension> {\n    buildFeatures { buildConfig = true }\n    buildTypes.getByName("debug") {\n        buildConfigField("String", "SUPABASE_URL", harnessLiteral(harnessProperties.getProperty("HARNESS_URL")))\n        buildConfigField("String", "SUPABASE_ANON_KEY", harnessLiteral(harnessProperties.getProperty("HARNESS_API_KEY")))\n    }\n    sourceSets.getByName("debug").manifest.srcFile(harnessDirectory.resolve("debug/AndroidManifest.xml"))\n    sourceSets.getByName("debug").res.srcDir(harnessDirectory.resolve("debug/res"))\n}\n`,
+    `import groovy.json.JsonOutput\n\ndef harnessDirectory = file(providers.gradleProperty('HARNESS_BINDING_DIR').get())\ndef harnessProperties = new Properties()\nnew File(harnessDirectory, 'binding.properties').withInputStream { harnessProperties.load(it) }\nandroid {\n    buildFeatures { buildConfig = true }\n    buildTypes.getByName('debug') {\n        buildConfigField 'String', 'SUPABASE_URL', JsonOutput.toJson(harnessProperties.getProperty('HARNESS_URL'))\n        buildConfigField 'String', 'SUPABASE_ANON_KEY', JsonOutput.toJson(harnessProperties.getProperty('HARNESS_API_KEY'))\n    }\n    sourceSets.getByName('debug').manifest.srcFile(new File(harnessDirectory, 'debug/AndroidManifest.xml'))\n    sourceSets.getByName('debug').res.srcDir(new File(harnessDirectory, 'debug/res'))\n}\n`,
   );
   await writeFile(
     join(debug, 'AndroidManifest.xml'),
@@ -95,6 +95,7 @@ export async function requireGuardIntegration(
 
 export interface DexScan {
   dexFiles: string[];
+  localOrigins: string[];
   nonLocalOrigins: string[];
   limitation: string;
 }
@@ -121,6 +122,7 @@ export async function scanApkDex(apkPath: string): Promise<DexScan> {
   )
     throw new Error('Unsupported APK ZIP directory');
   const dexFiles: string[] = [];
+  const localOrigins = new Set<string>();
   const origins = new Set<string>();
   let cursor = offset;
   for (let i = 0; i < count; i++) {
@@ -170,7 +172,9 @@ export async function scanApkDex(apkPath: string): Promise<DexScan> {
       .matchAll(/https?:\/\/[^\s\x00-\x20"'<>\\]+/gi)) {
       try {
         const url = new URL(match[0]);
-        if (!Object.hasOwn(localHosts, url.hostname)) origins.add(url.origin);
+        if (Object.hasOwn(localHosts, url.hostname))
+          localOrigins.add(url.origin);
+        else origins.add(url.origin);
       } catch {
         /* Not a parseable URL candidate. */
       }
@@ -179,6 +183,7 @@ export async function scanApkDex(apkPath: string): Promise<DexScan> {
   if (!dexFiles.length) throw new Error('APK contains no dex files');
   return {
     dexFiles,
+    localOrigins: [...localOrigins].sort(),
     nonLocalOrigins: [...origins].sort(),
     limitation:
       'Diagnostic only: obfuscation, R8, and dynamically constructed strings can hide endpoints; this does not prove safety.',

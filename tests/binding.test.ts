@@ -74,7 +74,7 @@ describe('app binding', () => {
         'key:secret',
       );
       const script = await readFile(result.gradleScript, 'utf8');
-      expect(script).toContain('buildTypes.getByName("debug")');
+      expect(script).toContain("buildTypes.getByName('debug')");
       expect(script).toContain('HARNESS_BINDING_DIR');
       expect(script).not.toContain(dir);
       expect(script).not.toContain('key:secret');
@@ -129,6 +129,7 @@ describe('app binding', () => {
       );
       const result = await scanApkDex(path);
       expect(result.dexFiles).toEqual(['classes.dex', 'classes2.dex']);
+      expect(result.localOrigins).toEqual(['http://127.0.0.1:54321']);
       expect(result.nonLocalOrigins).toEqual(['https://remote.example']);
       expect(result.limitation).toContain('does not prove safety');
     } finally {

@@ -42,7 +42,7 @@ export async function command(
       })
     ).stdout;
   } catch {
-    throw new Error(`${program} ${args.slice(0, 2).join(' ')} failed`);
+    throw new Error(`${program} command failed`);
   }
 }
 export function assertLocalUrl(value: string, protocols: string[]): void {
@@ -257,16 +257,26 @@ export function normalizeDump(dump: string): string {
 export async function stackVerify(
   options: StackOptions & { artifactDir: string },
 ): Promise<{ matches: boolean; missing: string[]; diff?: string }> {
-  const status = await localStatus(options);
+  await localStatus(options);
   const root = resolve(options.projectRoot);
   const files = await readdir(join(root, 'supabase', 'migrations'));
   const versions = files
     .filter((f) => /^\d+_.+\.sql$/.test(f))
     .map((f) => f.split('_')[0]);
+  const config = await readFile(join(root, 'supabase', 'config.toml'), 'utf8');
+  const projectId = config.match(/^\s*project_id\s*=\s*["']([^"']+)["']/m)?.[1];
+  if (!projectId || !/^[\w.-]+$/.test(projectId))
+    throw new BackendError('Cannot verify local project identity');
   const recorded = await command(
-    'psql',
+    'docker',
     [
-      status.DB_URL,
+      'exec',
+      `supabase_db_${projectId}`,
+      'psql',
+      '-U',
+      'postgres',
+      '-d',
+      'postgres',
       '-At',
       '-c',
       'SELECT version FROM supabase_migrations.schema_migrations ORDER BY version',
@@ -296,8 +306,8 @@ export async function stackVerify(
       (_line, prefix: string) => `${prefix}${base + index++}`,
     );
     await writeFile(configPath, config);
-    await command('supabase', ['db', 'start'], dir);
     started = true;
+    await command('supabase', ['db', 'start'], dir);
     const target = normalizeDump(
       await command('supabase', ['db', 'dump', '--local'], root),
     );
