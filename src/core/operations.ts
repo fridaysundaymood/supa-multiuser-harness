@@ -1,4 +1,4 @@
-import { mkdir, readFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { relative, resolve } from 'node:path';
 import {
   createResult,
@@ -13,6 +13,7 @@ import {
   type AutomaticAttackOptions,
   runAutomaticAttacks,
 } from './automatic-attacks.js';
+import { discoverCatalog, runCatalogAttacks } from './catalog-attacks.js';
 import { readBackendConfig } from './config.js';
 import { doctorChecks } from './doctor.js';
 import { mintUser } from './identity.js';
@@ -47,6 +48,8 @@ export const operations = [
   'stack_migrate',
   'stack_serve_functions',
   'mint_user',
+  'init_scenario',
+  'default_suite',
   'run_scenario',
   'run_attacks',
   'run_races',
@@ -148,11 +151,70 @@ export async function executeOperation(
             'Identity created; credentials are available only to in-process callers.',
         };
         break;
+      case 'init_scenario': {
+        const catalog = await discoverCatalog({ projectRoot: stackRoot });
+        const file =
+          typeof options.file === 'string'
+            ? options.file
+            : 'harness-scenario.yaml';
+        const target = resolve(projectRoot, file);
+        const resources = [
+          ...catalog.tables.map(
+            (table) =>
+              `# table ${JSON.stringify(`${table.schema}.${table.name}`)}`,
+          ),
+          ...catalog.functions.map(
+            (fn) => `# RPC ${JSON.stringify(`${fn.schema}.${fn.name}`)}`,
+          ),
+        ];
+        const template = [
+          '# Local-only scenario. Supply synthetic credentials and adapt the requests and assertions.',
+          '# Tokens must carry the intended role, subject and claims. Never commit credentials.',
+          '# Discovered resources:',
+          ...resources,
+          'connection:',
+          '  baseUrl: http://127.0.0.1:57321',
+          '  apiKey: ""',
+          '  tokens:',
+          '    actor: ""',
+          'steps:',
+          '  - kind: request',
+          '    name: local API discovery',
+          '    request:',
+          '      actor: actor',
+          '      path: /rest/v1/',
+          '    checks:',
+          '      - kind: status',
+          '        equals: 200',
+          '',
+        ].join('\n');
+        await writeFile(target, template, { flag: 'wx', mode: 0o600 });
+        output = {
+          file: relative(projectRoot, target).split('\\').join('/'),
+          resources: resources.length,
+        };
+        break;
+      }
+      case 'default_suite':
+        output = await runCatalogAttacks({ projectRoot: stackRoot });
+        break;
       case 'run_scenario':
       case 'run_attacks':
       case 'run_races': {
-        if (typeof options.file !== 'string')
-          throw new Error('A scenario file is required');
+        if (typeof options.file !== 'string') {
+          if (operation === 'run_attacks') {
+            output = await runCatalogAttacks({ projectRoot: stackRoot });
+            break;
+          }
+          throw Object.assign(
+            new Error(
+              operation === 'run_races'
+                ? 'Race checks require an explicit race options file; create race.yaml and run backend run races race.yaml'
+                : 'Cross-user checks require an explicit scenario file; run backend init-scenario harness-scenario.yaml and edit it',
+            ),
+            { status: 'unsupported' },
+          );
+        }
         const definition: unknown = parse(
           await readFile(resolve(projectRoot, options.file), 'utf8'),
         );

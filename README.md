@@ -4,13 +4,16 @@ A local-only Supabase test harness. It provides migration and stack operations, 
 
 ## From source
 
-Install Node.js 24, JDK 21, Android SDK platform-tools, PostgreSQL client tools (`psql` on PATH), Docker and Supabase CLI 2.x. On Windows, use Docker Desktop with WSL2 integration and keep project files on a filesystem accessible to Docker. From this repository, run `npm ci`, `npm run build`, then `node dist/cli/index.js doctor --json`. The sibling `../android-kit` repository supplies the schema package and must be built first.
+Install Node.js 24, JDK 21, Android SDK platform-tools, PostgreSQL client tools (`psql` on PATH), Docker and Supabase CLI 2.75.0. On Windows, use Docker Desktop with WSL2 integration and keep project files on a filesystem accessible to Docker. From this repository, run `npm ci`, `npm run build`, then `node dist/cli/index.js doctor --json`. The sibling `../android-kit` repository supplies the schema package and must be built first.
 
-For a project with a local Supabase configuration, run `backend stack up --json`, `backend stack verify --json`, or `backend run attacks probes.yaml --json`. Each command accepts `--project-root` and `--json`; exit codes are 0 for pass, 1 for fail/flaky, and 2 for blocked/unsupported/error. Attack and race probes currently require explicit assertions and credentials in the supplied local file: do not commit it. Do not use production data or a linked project.
+For the local `ak-harness` project, run `backend stack up --json`, `backend stack verify --json`, then `backend default-suite --json` (or `backend run attacks --json`). The default suite needs no probe file: it inspects exposed schemas, issues JWT probes against the verified local API, and checks anonymous writes in rolled-back transactions. Findings distinguish detected failures from review items; a pass does not establish cross-tenant isolation, all write authorization, RPC safety, or race correctness.
+
+For application-specific checks, create a starter with `backend init-scenario --json` (or `backend init-scenario path/to/scenario.yaml --json`); it does not overwrite an existing file. Edit it for the local application's synthetic data and explicit expectations, then use `backend run attacks probes.yaml --json`, `backend run scenario scenario.yaml --json`, or `backend run races races.yaml --json` as appropriate. Keep credentials out of committed files. Do not use production data or a linked project. Commands accept `--project-root` and `--json`; exit codes are 0 for pass, 1 for fail/flaky, and 2 for blocked/unsupported/error.
 
 `backend stack down` stops only the verified local `ak-harness` project. It refuses linked projects and other project IDs.
 
 A generic MCP client can launch `node` with arguments `["dist/mcp/index.js"]` and this repository as its working directory. MCP tools use the `backend_` prefix and the same operation parameters as the CLI.
+The MCP equivalents are `backend_default_suite`, `backend_init_scenario` (optional `file`), and `backend_run_attacks` (optional `file`); pass `projectRoot` when the project is not the current directory.
 
 The package root exports `toolDefinitions()`, `configSection`, `configSectionSchema`, `supportedSchemaMajors`, `doctor()`, and `status()`. Importing it does not launch MCP. `backend_status` and `status()` report the local stack's running state, local endpoint ports, and applied migration count without changing the stack; linked projects and remote endpoints are refused. The result uses the standard result envelope.
 

@@ -41,11 +41,13 @@ Read only the optional `backend` section of `android-kit.yaml`, validated using 
 
 - `backend run scenario` executes ordered or parallel multi-phone steps, checks convergence and member isolation. Bounded reconnect permutations report total, executed and truncation.
 - `backend run attacks` probes discovered tables/RPCs with explicit role, tampered/expired JWT and cross-group expectations.
+- `backend default-suite` (also `backend run attacks` without a file) discovers exposed resources, runs JWT probes and checks anonymous writes in rolled-back transactions without user-authored configuration. Catalog findings requiring review are informational; a passing default suite does not establish cross-tenant, all write, RPC or race safety.
+- `backend init-scenario` creates a non-overwriting starter for explicit, application-specific checks. Credentials and synthetic fixtures remain the operator's responsibility.
 - `backend run races` performs configurable parallel state-changing RPC calls; records seeds, attempts, inputs, ordering, invariant checks, deadlocks and latency percentiles. Seeds do not control thread scheduling; intermittent failures are flaky.
 
 ## MCP tool surface
 
-`backend_doctor`, `backend_stack_up`, `backend_stack_verify`, `backend_stack_at`, `backend_stack_seed`, `backend_stack_migrate`, `backend_stack_serve_functions`, `backend_mint_user`, `backend_run_scenario`, `backend_run_attacks`, `backend_run_races`, `backend_run_cron`, each with CLI equivalent.
+`backend_doctor`, `backend_stack_up`, `backend_stack_down`, `backend_stack_verify`, `backend_stack_at`, `backend_stack_seed`, `backend_stack_migrate`, `backend_stack_serve_functions`, `backend_mint_user`, `backend_default_suite`, `backend_init_scenario`, `backend_run_scenario`, `backend_run_attacks`, `backend_run_races`, `backend_run_cron`, each with CLI equivalent.
 
 1. **M1:** core, CLI, MCP, schema/config, doctor and guidance implemented. Live fixture migration verification passed for the clean schema and detected intentional drift. On an isolated local stack, `stack at`, `stack seed`, `stack migrate`, and `run cron` passed in sequence; the cron operation removed the aged task and the scheduled job was present. The fixture has no functions, so function serving was not exercised.
 2. **M2:** scenario DSL, signing detection and real auth flow implemented. On the live local stack, HS256 was detected and two synthetic users were minted; signed tokens were accepted by PostgREST and RPC, RLS scoped board access, and a tampered token was rejected. The local publishable/secret key family was exercised; other signing and API-key families have unit coverage only.
@@ -58,3 +60,5 @@ Read only the optional `backend` section of `android-kit.yaml`, validated using 
 Stack stopped with `--no-backup`; `docker ps -a --filter name=ak-harness` returned no containers.
 
 Verified: lint and build pass; 26 TypeScript tests pass with 2 opt-in integration tests skipped in the ordinary run. The seed/cron/status integration regression passed separately against the live stack; 5 standalone JVM tests and 2 live JVM integration tests passed previously. Defect integration detected both seeded issues.
+
+The default-suite regression has an opt-in live fixture test: set `BACKEND_DEFAULT_SUITE_FIXTURE` to a seeded, disposable `ak-harness` project and run the integration test. It temporarily applies synthetic missing-subject, disabled-RLS and anonymous-write defects under `tests/fixtures`, checks probe writes leave row counts unchanged, and removes the defects afterward. The test and new suite have not been verified in this change.

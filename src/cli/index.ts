@@ -22,14 +22,27 @@ for (let i = 0; i < args.length; i++) {
     else options[name] = args[++i];
   } else words.push(arg);
 }
+const singleWord = [
+  'doctor',
+  'status',
+  'mint-user',
+  'init-scenario',
+  'default-suite',
+].includes(words[0] ?? '');
 const key = words
-  .slice(0, words[0] === 'doctor' || words[0] === 'mint-user' ? 1 : 2)
+  .slice(0, singleWord ? 1 : 2)
   .join('_')
   .replaceAll('-', '_');
-const positional = words.slice(key === 'doctor' || key === 'mint_user' ? 1 : 2);
-if (key === 'stack_at') options.version = positional[0];
-if (key === 'stack_seed') options.scenario = positional[0];
-if (key.startsWith('run_') && key !== 'run_cron') options.file = positional[0];
+const positional = words.slice(singleWord ? 1 : 2);
+if (key === 'stack_at' && positional[0] !== undefined)
+  options.version = positional[0];
+if (key === 'stack_seed' && positional[0] !== undefined)
+  options.scenario = positional[0];
+if (
+  (key === 'init_scenario' || (key.startsWith('run_') && key !== 'run_cron')) &&
+  positional[0] !== undefined
+)
+  options.file = positional[0];
 if (!operations.includes(key as Operation)) {
   console.error('Unknown command');
   process.exitCode = 2;

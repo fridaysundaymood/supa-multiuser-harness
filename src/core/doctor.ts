@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { commandExecutable } from './stack.js';
 
 const exec = promisify(execFile);
 
@@ -31,7 +32,7 @@ export async function doctorChecks() {
   return Promise.all(
     commands.map(async ([command, args, expected, remedy]) => {
       try {
-        const result = await exec(command, args, {
+        const result = await exec(commandExecutable(command), args, {
           timeout: 15000,
           windowsHide: true,
         });

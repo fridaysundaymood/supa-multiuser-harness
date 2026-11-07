@@ -105,7 +105,11 @@ const inputSchema = {
   type: 'object' as const,
   properties: {
     projectRoot: { type: 'string' },
-    file: { type: 'string' },
+    file: {
+      type: 'string',
+      description:
+        'Scenario file path; omit for the default attack suite or the default init-scenario destination.',
+    },
     version: { type: 'string' },
     scenario: { type: 'string' },
     sql: { type: 'string' },
@@ -119,7 +123,14 @@ const inputSchema = {
 export function toolDefinitions(options: Record<string, unknown> = {}) {
   return operations.map((operation) => ({
     name: `backend_${operation}`,
-    description: `Run backend ${operation.replaceAll('_', ' ')}`,
+    description:
+      operation === 'default_suite'
+        ? 'Run the default local security suite'
+        : operation === 'run_attacks'
+          ? 'Run the default local security suite, or probes from a scenario file'
+          : operation === 'init_scenario'
+            ? 'Create a starter scenario file without overwriting an existing file'
+            : `Run backend ${operation.replaceAll('_', ' ')}`,
     inputSchema,
     handler: (input: Record<string, unknown> = {}) =>
       operation === 'status'

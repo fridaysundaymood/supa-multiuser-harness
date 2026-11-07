@@ -19,3 +19,6 @@ local.properties
 *.avd/
 .DS_Store
 Thumbs.db
+
+# local integration fixture scratch
+.integration-fixture/

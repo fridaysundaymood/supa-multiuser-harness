@@ -10,11 +10,23 @@ import {
   rm,
   writeFile,
 } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 
 const exec = promisify(execFile);
+export function commandExecutable(program: string): string {
+  if (process.platform !== 'win32' || program !== 'supabase') return program;
+  try {
+    const packagePath = createRequire(import.meta.url).resolve(
+      'supabase/package.json',
+    );
+    return join(dirname(packagePath), 'bin', 'supabase.exe');
+  } catch {
+    return program;
+  }
+}
 export class BackendError extends Error {
   constructor(
     message: string,
@@ -45,7 +57,7 @@ export async function command(
 ): Promise<string> {
   try {
     return (
-      await exec(program, args, {
+      await exec(commandExecutable(program), args, {
         cwd,
         maxBuffer: 32 * 1024 * 1024,
         windowsHide: true,
@@ -194,6 +206,19 @@ export async function stackDown(options: StackOptions): Promise<void> {
   const projectId = config.match(/^\s*project_id\s*=\s*["']([^"']+)["']/m)?.[1];
   if (projectId !== 'ak-harness')
     throw new BackendError('Refusing to stop a project other than ak-harness');
+  const containers = await command(
+    'docker',
+    [
+      'ps',
+      '-a',
+      '--filter',
+      'name=^/supabase_.*_ak-harness$',
+      '--format',
+      '{{.Names}}',
+    ],
+    options.projectRoot,
+  );
+  if (!containers.trim()) return;
   await localStatus(options);
   await command(
     'supabase',
