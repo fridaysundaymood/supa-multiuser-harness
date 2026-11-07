@@ -37,8 +37,16 @@ it('reports unsafe tokens and compares claim probes against the anonymous baseli
     catalog,
     request(false, false),
   );
-  // Empty anon baseline: a 200 with no rows proves nothing about claim rejection, so the run is not a pass.
-  expect(clean.status).toBe('error');
+  expect(clean.status).toBe('pass');
+  const strict = await probeCatalog(
+    'http://127.0.0.1:1234',
+    'anon-key',
+    key,
+    catalog,
+    request(false, false),
+    true,
+  );
+  expect(strict.status).toBe('fail');
   expect(clean.findings.find((f) => f.check === 'missing sub')?.outcome).toBe(
     'inconclusive',
   );
@@ -99,7 +107,17 @@ it('reports empty catalogs as inconclusive and rejects credential-bearing URLs',
     { tables: [], functions: [] },
     request(false, false),
   );
-  expect(result.status).toBe('error');
+  expect(result.status).toBe('pass');
+  expect(result.summary.inconclusive).toBe(1);
+  const strict = await probeCatalog(
+    'http://localhost:1234',
+    'anon-key',
+    key,
+    { tables: [], functions: [] },
+    request(false, false),
+    true,
+  );
+  expect(strict.status).toBe('fail');
   await expect(
     probeCatalog(
       'http://user:pass@localhost:1234',
@@ -109,6 +127,18 @@ it('reports empty catalogs as inconclusive and rejects credential-bearing URLs',
       request(false, false),
     ),
   ).rejects.toThrow('loopback');
+});
+
+it('reports server failures as errors rather than inconclusive checks', async () => {
+  await expect(
+    probeCatalog(
+      'http://localhost:1234',
+      'anon-key',
+      key,
+      catalog,
+      async () => new Response('', { status: 500 }),
+    ),
+  ).rejects.toThrow('HTTP 500');
 });
 
 it('does not execute RPCs and compares claim probes to the anon baseline', async () => {

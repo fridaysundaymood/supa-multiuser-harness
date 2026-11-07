@@ -8,6 +8,7 @@ description: Run synthetic local backend checks.
 2. Start the local stack with `backend stack up --json` or `backend_stack_up`.
 3. Verify migrations with `backend stack verify --json` or `backend_stack_verify`.
 4. Run the file-free local security suite with `backend default-suite --json` or `backend_default_suite` (also `backend run attacks --json` / `backend_run_attacks` without `file`). Review informational findings as well as failures. Anonymous write checks run as superuser in one rolled-back transaction with `session_replication_role = replica` and anon RLS applied, so ordinary triggers do not fire; tables with `ENABLE ALWAYS` triggers report `blocked` and are not probed. The suite does not prove cross-tenant isolation, all write or RPC authorization, or race correctness.
+   Inconclusive checks pass by default and appear in the summary with scenario seeding guidance. Add `--strict` or pass `strict: true` to fail on inconclusive checks.
 5. Create an application-specific starter with `backend init-scenario --json` or `backend_init_scenario`; optionally pass a file path (`file` for MCP). The default is `harness-scenario.yaml` and existing files are not overwritten. Adapt it for synthetic data and explicit expectations without committing credentials.
 6. Run a scenario using `backend run scenario scenario.yaml --json` or `backend_run_scenario` with `file`.
 7. Run explicit attack probes using `backend run attacks attacks.yaml --json` or `backend_run_attacks` with `file`.

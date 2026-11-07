@@ -18,7 +18,7 @@ for (let i = 0; i < args.length; i++) {
     const name = arg
       .slice(2)
       .replace(/-([a-z])/g, (_, letter: string) => letter.toUpperCase());
-    if (name === 'linked') options.linked = true;
+    if (name === 'linked' || name === 'strict') options[name] = true;
     else options[name] = args[++i];
   } else words.push(arg);
 }

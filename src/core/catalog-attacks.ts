@@ -43,6 +43,7 @@ export async function probeCatalog(
   key: SigningKey,
   catalog: Catalog,
   fetcher: typeof fetch = fetch,
+  strict = false,
 ) {
   const base = new URL(baseUrl);
   if (
@@ -75,7 +76,14 @@ export async function probeCatalog(
     ['wrong iss', signJwt({ ...claims, iss: 'unexpected' }, key), false],
   ] as const;
   const findings: Finding[] = [];
-  let inconclusive = catalog.tables.length === 0;
+  if (catalog.tables.length === 0)
+    findings.push({
+      resource: 'catalog',
+      check: 'table discovery',
+      outcome: 'inconclusive',
+      detail:
+        'No tables discovered. Seed rows with a scenario (backend run scenario) and review exposed schemas.',
+    });
   for (const table of catalog.tables) {
     const resource = `${table.schema}.${table.name}`;
     if (table.kind === 'r' || table.kind === 'p')
@@ -104,7 +112,8 @@ export async function probeCatalog(
       return { status: response.status, body: await response.text() };
     };
     const baseline = await request(apiKey);
-    if (baseline.status >= 500) inconclusive = true;
+    if (baseline.status >= 500)
+      throw new Error(`Baseline request failed: HTTP ${baseline.status}`);
     // A denied anonymous read is an empty baseline: any rows returned under a claim variant exceed it.
     const baselineRows: unknown =
       baseline.status >= 200 && baseline.status < 300
@@ -113,16 +122,17 @@ export async function probeCatalog(
     for (const [name, token, hard] of variants) {
       const observed = await request(token);
       const success = observed.status >= 200 && observed.status < 300;
-      if (observed.status >= 500) inconclusive = true;
+      if (observed.status >= 500)
+        throw new Error(`JWT probe failed: HTTP ${observed.status}`);
       let escalation = false;
       let empty = false;
-      if (success) {
+      if (success && !hard) {
         const rows = parseRows(observed.body);
         if (Array.isArray(rows) && Array.isArray(baselineRows)) {
           escalation = rows.length > baselineRows.length;
           // Zero rows on both sides cannot show whether the claim was rejected or merely unmatched.
           empty = rows.length === 0 && baselineRows.length === 0;
-        } else inconclusive = true;
+        } else throw new Error('JWT probe returned an invalid row response');
       }
       if (!hard && empty) {
         findings.push({
@@ -162,11 +172,11 @@ export async function probeCatalog(
   };
   return {
     summary,
-    status: findings.some((f) => f.outcome === 'fail')
+    status: (findings.some((f) => f.outcome === 'fail')
       ? ('fail' as const)
-      : inconclusive || summary.inconclusive > 0
-        ? ('error' as const)
-        : ('pass' as const),
+      : strict && summary.inconclusive > 0
+        ? ('fail' as const)
+        : ('pass' as const)) as 'pass' | 'fail' | 'blocked',
     findings,
     coverage:
       'JWT row comparisons are limited to 100 rows and may require review. Cross-user, write and race behavior requires an explicit scenario.',
@@ -214,7 +224,9 @@ export async function discoverCatalog(options: StackOptions): Promise<Catalog> {
   return JSON.parse(output) as Catalog;
 }
 
-export async function runCatalogAttacks(options: StackOptions) {
+export async function runCatalogAttacks(
+  options: StackOptions & { strict?: boolean },
+) {
   const status = await localStatus(options);
   const key = detectSigningKey(status);
   const apiKey = status.ANON_KEY || status.PUBLISHABLE_KEY;
@@ -224,7 +236,14 @@ export async function runCatalogAttacks(options: StackOptions) {
       'unsupported',
     );
   const catalog = await discoverCatalog(options);
-  const report = await probeCatalog(status.API_URL, apiKey, key, catalog);
+  const report = await probeCatalog(
+    status.API_URL,
+    apiKey,
+    key,
+    catalog,
+    fetch,
+    options.strict,
+  );
   const config = parseToml(
     await readFile(
       join(options.projectRoot, 'supabase', 'config.toml'),
@@ -245,7 +264,7 @@ export async function runCatalogAttacks(options: StackOptions) {
         outcome: 'blocked',
         detail: `ALWAYS-enabled triggers fire in replica mode and may have external effects; write probes skipped: ${table.alwaysTriggers.join(', ')}`,
       });
-      report.status = report.status === 'fail' ? 'fail' : 'error';
+      report.status = report.status === 'fail' ? 'fail' : 'blocked';
       continue;
     }
     const relation = `"${table.schema.replaceAll('"', '""')}"."${table.name.replaceAll('"', '""')}"`;
@@ -340,6 +359,15 @@ ROLLBACK;`;
       if (failed) report.status = 'fail';
     }
   }
+  report.summary.fail = report.findings.filter(
+    (f) => f.outcome === 'fail',
+  ).length;
+  report.summary.blocked = report.findings.filter(
+    (f) => f.outcome === 'blocked',
+  ).length;
+  report.summary.info = report.findings.filter(
+    (f) => f.outcome === 'info',
+  ).length;
   report.coverage +=
     ' Anonymous writes run as superuser in replica mode inside one rolled-back transaction; tables with ALWAYS-enabled triggers are blocked, not probed. Indeterminate granted writes fail conservatively.';
   return report;

@@ -119,6 +119,10 @@ const inputSchema = {
     password: { type: 'string' },
     exclude: { type: 'array', items: { type: 'string' } },
     linked: { type: 'boolean' },
+    strict: {
+      type: 'boolean',
+      description: 'Fail the default suite on inconclusive checks.',
+    },
   },
 };
 

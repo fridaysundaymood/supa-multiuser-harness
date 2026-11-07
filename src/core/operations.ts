@@ -220,14 +220,20 @@ export async function executeOperation(
         break;
       }
       case 'default_suite':
-        output = await runCatalogAttacks({ projectRoot: stackRoot });
+        output = await runCatalogAttacks({
+          projectRoot: stackRoot,
+          strict: options.strict === true,
+        });
         break;
       case 'run_scenario':
       case 'run_attacks':
       case 'run_races': {
         if (typeof options.file !== 'string') {
           if (operation === 'run_attacks') {
-            output = await runCatalogAttacks({ projectRoot: stackRoot });
+            output = await runCatalogAttacks({
+              projectRoot: stackRoot,
+              strict: options.strict === true,
+            });
             break;
           }
           throw Object.assign(
@@ -266,6 +272,18 @@ export async function executeOperation(
       status = output.status as Status;
     evidence = output === undefined ? [] : [output];
     summary = status === 'pass' ? 'Operation completed' : `Operation ${status}`;
+    if (
+      (operation === 'default_suite' ||
+        (operation === 'run_attacks' && typeof options.file !== 'string')) &&
+      output &&
+      typeof output === 'object' &&
+      'summary' in output &&
+      output.summary &&
+      typeof output.summary === 'object' &&
+      'inconclusive' in output.summary &&
+      Number(output.summary.inconclusive) > 0
+    )
+      summary += `; ${output.summary.inconclusive} inconclusive checks. Seed rows with a scenario (backend run scenario).`;
   } catch (error) {
     const requested =
       error && typeof error === 'object' && 'status' in error
