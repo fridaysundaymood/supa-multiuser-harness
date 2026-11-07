@@ -36,6 +36,7 @@ import {
   type ScenarioOptions,
 } from './suites.js';
 import { status as stackStatus } from './tools.js';
+import { prepareWorkdir } from './workdir.js';
 
 export const operations = [
   'doctor',
@@ -56,6 +57,23 @@ export const operations = [
   'run_cron',
 ] as const;
 export type Operation = (typeof operations)[number];
+
+/** Operations that start, query, mutate or stop the local stack; they run only in the isolated workdir. */
+const STACK_OPERATIONS = new Set<string>([
+  'stack_up',
+  'stack_down',
+  'stack_verify',
+  'stack_at',
+  'stack_seed',
+  'stack_migrate',
+  'stack_serve_functions',
+  'mint_user',
+  'default_suite',
+  'run_scenario',
+  'run_attacks',
+  'run_races',
+  'run_cron',
+]);
 export async function executeOperation(
   operation: Operation,
   options: Record<string, unknown> = {},
@@ -79,16 +97,21 @@ export async function executeOperation(
         status: 'blocked',
       });
     const config = await readBackendConfig(projectRoot);
-    const stackRoot = config.supabaseDir
+    const sourceRoot = config.supabaseDir
       ? resolve(projectRoot, config.supabaseDir)
       : projectRoot;
+    // Every stack-touching operation runs against an isolated copy; the project's own supabase/ is never started.
+    const stackRoot = STACK_OPERATIONS.has(operation)
+      ? (await prepareWorkdir(sourceRoot)).root
+      : sourceRoot;
     await mkdir(artifactDir, { recursive: true });
     let output: unknown;
     switch (operation) {
       case 'doctor': {
         const checks = await doctorChecks();
         output = checks;
-        if (checks.some((check) => !check.ok)) status = 'blocked';
+        if (checks.some((check) => !check.ok && !check.optional))
+          status = 'blocked';
         break;
       }
       case 'stack_up':

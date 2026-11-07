@@ -14,6 +14,7 @@ import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
+import { defaultExcludedServices, harnessProjectId } from './workdir.js';
 
 const exec = promisify(execFile);
 export function commandExecutable(program: string): string {
@@ -121,6 +122,10 @@ export async function localStatus(
   const projectId = config.match(/^\s*project_id\s*=\s*["']([^"']+)["']/m)?.[1];
   if (!projectId || !/^[\w.-]+$/.test(projectId))
     throw new BackendError('Cannot verify local project identity');
+  if (projectId !== harnessProjectId)
+    throw new BackendError(
+      `Refusing Supabase project "${projectId}"; only "${harnessProjectId}" may be operated`,
+    );
   try {
     const details = JSON.parse(
       await command('docker', ['inspect', `supabase_db_${projectId}`], root),
@@ -192,8 +197,10 @@ export async function stackUp(
 ): Promise<void> {
   await ensureUnlinked(options);
   const args = ['start'];
-  if (options.exclude?.length)
-    args.push('--exclude', options.exclude.join(','));
+  const exclude = options.exclude?.length
+    ? options.exclude
+    : defaultExcludedServices;
+  args.push('--exclude', exclude.join(','));
   await command('supabase', args, options.projectRoot);
   await localStatus(options);
 }

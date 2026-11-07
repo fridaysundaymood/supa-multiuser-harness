@@ -18,7 +18,7 @@ export async function doctorChecks() {
       'psql',
       ['--version'],
       /psql \(PostgreSQL\) \d+/,
-      'Install PostgreSQL client tools and add psql to PATH',
+      'Optional: host psql is not required when the container path (docker exec supabase_db_<id> psql) works',
     ],
     [
       'adb',
@@ -40,10 +40,16 @@ export async function doctorChecks() {
         return {
           command,
           ok: expected.test(output),
+          optional: command === 'psql' || undefined,
           remedy: expected.test(output) ? undefined : remedy,
         };
       } catch {
-        return { command, ok: false, remedy };
+        return {
+          command,
+          ok: false,
+          optional: command === 'psql' || undefined,
+          remedy,
+        };
       }
     }),
   );

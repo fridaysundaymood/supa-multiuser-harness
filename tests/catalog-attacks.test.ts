@@ -37,10 +37,15 @@ it('reports unsafe tokens and compares claim probes against the anonymous baseli
     catalog,
     request(false, false),
   );
-  expect(clean.status).toBe('pass');
+  // Empty anon baseline: a 200 with no rows proves nothing about claim rejection, so the run is not a pass.
+  expect(clean.status).toBe('error');
   expect(clean.findings.find((f) => f.check === 'missing sub')?.outcome).toBe(
-    'info',
+    'inconclusive',
   );
+  expect(clean.findings.find((f) => f.check === 'missing sub')?.detail).toMatch(
+    /seed rows/i,
+  );
+  expect(clean.summary.inconclusive).toBeGreaterThan(0);
   const unsafe = await probeCatalog(
     'http://127.0.0.1:1234',
     'anon-key',

@@ -24,7 +24,7 @@ export type Catalog = {
 type Finding = {
   resource: string;
   check: string;
-  outcome: 'fail' | 'info' | 'blocked';
+  outcome: 'fail' | 'info' | 'blocked' | 'inconclusive';
   detail: string;
 };
 
@@ -115,11 +115,23 @@ export async function probeCatalog(
       const success = observed.status >= 200 && observed.status < 300;
       if (observed.status >= 500) inconclusive = true;
       let escalation = false;
+      let empty = false;
       if (success) {
         const rows = parseRows(observed.body);
         if (Array.isArray(rows) && Array.isArray(baselineRows)) {
           escalation = rows.length > baselineRows.length;
+          // Zero rows on both sides cannot show whether the claim was rejected or merely unmatched.
+          empty = rows.length === 0 && baselineRows.length === 0;
         } else inconclusive = true;
+      }
+      if (!hard && empty) {
+        findings.push({
+          resource,
+          check: name,
+          outcome: 'inconclusive',
+          detail: `HTTP ${observed.status}, authenticated baseline HTTP ${baseline.status}; table empty, claim rejection unproven. Seed rows with a scenario (backend run scenario) to test this claim.`,
+        });
+        continue;
       }
       findings.push({
         resource,
@@ -142,10 +154,17 @@ export async function probeCatalog(
         detail:
           'Callable by anon; review intended privilege boundary. RPCs not executed by catalog probes.',
       });
+  const summary = {
+    fail: findings.filter((f) => f.outcome === 'fail').length,
+    blocked: findings.filter((f) => f.outcome === 'blocked').length,
+    inconclusive: findings.filter((f) => f.outcome === 'inconclusive').length,
+    info: findings.filter((f) => f.outcome === 'info').length,
+  };
   return {
+    summary,
     status: findings.some((f) => f.outcome === 'fail')
       ? ('fail' as const)
-      : inconclusive
+      : inconclusive || summary.inconclusive > 0
         ? ('error' as const)
         : ('pass' as const),
     findings,
