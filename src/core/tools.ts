@@ -65,12 +65,12 @@ export async function status(
     const count = await command(
       'psql',
       [
-        endpoints.DB_URL,
         '-At',
         '-v',
         'ON_ERROR_STOP=1',
         '-c',
         'SELECT count(*) FROM supabase_migrations.schema_migrations',
+        endpoints.DB_URL,
       ],
       projectRoot,
     );

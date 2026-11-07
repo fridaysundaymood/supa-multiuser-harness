@@ -6,7 +6,7 @@ Testing multi-user synchronization through a Supabase relay requires repeatable 
 
 ## Goal and status
 
-Implement a reusable harness for verified local Supabase backends, synthetic multi-user fixtures, safely bound Android test builds, and authorization and race scenarios. Production-scale load testing and hosting are out of scope. Clean and defective fixture integration has run against a local stack; see milestone status below for remaining verification.
+Implement a reusable harness for verified local Supabase backends, synthetic multi-user fixtures, safely bound Android test builds, and authorization and race scenarios. Production-scale load testing and hosting are out of scope. Verification status is recorded below.
 
 ## Architecture and contracts
 
@@ -47,14 +47,14 @@ Read only the optional `backend` section of `android-kit.yaml`, validated using 
 
 `backend_doctor`, `backend_stack_up`, `backend_stack_verify`, `backend_stack_at`, `backend_stack_seed`, `backend_stack_migrate`, `backend_stack_serve_functions`, `backend_mint_user`, `backend_run_scenario`, `backend_run_attacks`, `backend_run_races`, `backend_run_cron`, each with CLI equivalent.
 
-1. **M1:** core, CLI, MCP, schema/config, doctor and guidance implemented. Live fixture migration verification passed for the clean schema and detected an intentional schema drift; seed/migrate/cron code remains to be exercised end to end.
-2. **M2:** scenario DSL and JWT signing detection implemented; real auth flow supported. Signing unit coverage passes; local identity/API-key family integration remains unverified.
+1. **M1:** core, CLI, MCP, schema/config, doctor and guidance implemented. Live fixture migration verification passed for the clean schema and detected intentional drift. On an isolated local stack, `stack at`, `stack seed`, `stack migrate`, and `run cron` passed in sequence; the cron operation removed the aged task and the scheduled job was present. The fixture has no functions, so function serving was not exercised.
+2. **M2:** scenario DSL, signing detection and real auth flow implemented. On the live local stack, HS256 was detected and two synthetic users were minted; signed tokens were accepted by PostgREST and RPC, RLS scoped board access, and a tampered token was rejected. The local publishable/secret key family was exercised; other signing and API-key families have unit coverage only.
 3. **M3:** configurable role/tamper/expiry/cross-group probes and race runner implemented. Live clean fixture passes; defects migration detected cross-board disclosure and lost updates.
-4. **M4:** debug runtime guard, APK dex scan and versioned Kotlin client implemented. A disposable guarded fixture passed its debug transport JVM test and built a minified debug APK and R8 release APK. The debug DEX scan found the local endpoint and external URL candidates; the release scan found no local endpoint. No device was available for instrumentation. DEX findings are diagnostic only.
-5. **M5:** bounded permutation reporting and cross-platform CI implemented. CI matrix itself not run.
+4. **M4:** debug runtime guard, APK dex scan and versioned Kotlin client implemented. A disposable guarded fixture passed its debug transport JVM test and built minified debug and R8 release APKs. An instrumented test on an emu-lab leased headless emulator reached the local backend through `10.0.2.2` and rejected a non-local endpoint. DEX findings remain diagnostic only.
+5. **M5:** bounded permutation reporting and cross-platform CI implemented. A live three-phone simulation with cap 2 executed 2 of 6 permutations, reported truncation, and passed all 12 isolation probes. The CI matrix itself was not run.
 
 ## Kit compatibility
 
 Stack stopped with `--no-backup`; `docker ps -a --filter name=ak-harness` returned no containers.
 
-Verified: lint/build and 23 TypeScript tests pass; 5 standalone JVM tests pass; 2 live JVM integration tests pass on clean fixture. Defect integration detected both seeded issues.
+Verified: lint and build pass; 26 TypeScript tests pass with 2 opt-in integration tests skipped in the ordinary run. The seed/cron/status integration regression passed separately against the live stack; 5 standalone JVM tests and 2 live JVM integration tests passed previously. Defect integration detected both seeded issues.

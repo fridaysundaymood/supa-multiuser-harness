@@ -1,17 +1,22 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { doctorChecks } from '../src/core/doctor.js';
 import {
   assertLocalUrl,
   BackendError,
   command,
   localStatus,
   normalizeDump,
+  runCron,
   stackAt,
   stackMigrate,
+  stackSeed,
   stackVerify,
 } from '../src/core/stack.js';
+import { status } from '../src/core/tools.js';
 
 describe('local stack safety', () => {
   it('accepts loopback and rejects remote or deceptive endpoints', () => {
@@ -55,6 +60,38 @@ describe('local stack safety', () => {
       command('backend-missing-executable', ['secret-value'], '.'),
     ).rejects.toThrow('backend-missing-executable command failed');
   });
+
+  it.skipIf(!process.env.BACKEND_VERIFY_FIXTURE)(
+    'executes seed and cron SQL and reports migration status',
+    async () => {
+      const projectRoot = process.env.BACKEND_VERIFY_FIXTURE as string;
+      const text = await readFile(
+        join(projectRoot, 'supabase', 'config.toml'),
+        'utf8',
+      );
+      if (!/^project_id\s*=\s*["']ak-harness["']/m.test(text))
+        throw new Error(
+          'Integration test requires the owned ak-harness project',
+        );
+      await localStatus({ projectRoot });
+      const seedDir = join(projectRoot, 'supabase', 'seeds');
+      const scenario = `harness-${randomUUID()}`;
+      const seedPath = join(seedDir, `${scenario}.sql`);
+      await mkdir(seedDir, { recursive: true });
+      try {
+        await writeFile(seedPath, 'select 1;\n', { flag: 'wx' });
+        await stackSeed({ projectRoot, scenario });
+        await runCron({ projectRoot, sql: 'select 1' });
+        expect((await status({ projectRoot })).status).toBe('pass');
+        expect(
+          (await doctorChecks()).find((check) => check.command === 'psql'),
+        ).toMatchObject({ ok: true });
+      } finally {
+        await rm(seedPath, { force: true });
+      }
+    },
+    60_000,
+  );
 
   it.skipIf(!process.env.BACKEND_VERIFY_FIXTURE)(
     'compares a clean local fixture and reports schema drift',

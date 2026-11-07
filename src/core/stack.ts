@@ -198,7 +198,7 @@ export async function stackSeed(
   await access(path);
   await command(
     'psql',
-    [status.DB_URL, '-v', 'ON_ERROR_STOP=1', '-f', path],
+    ['-v', 'ON_ERROR_STOP=1', '-f', path, status.DB_URL],
     options.projectRoot,
   );
 }
@@ -208,7 +208,7 @@ export async function runCron(
   const status = await localStatus(options);
   await command(
     'psql',
-    [status.DB_URL, '-v', 'ON_ERROR_STOP=1', '-c', options.sql],
+    ['-v', 'ON_ERROR_STOP=1', '-c', options.sql, status.DB_URL],
     options.projectRoot,
   );
 }

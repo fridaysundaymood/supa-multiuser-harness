@@ -4,7 +4,7 @@ A local-only Supabase test harness. It provides migration and stack operations, 
 
 ## From source
 
-Install Node.js 24, JDK 21, Android SDK platform-tools, Docker and Supabase CLI 2.x. On Windows, use Docker Desktop with WSL2 integration and keep project files on a filesystem accessible to Docker. From this repository, run `npm ci`, `npm run build`, then `node dist/cli/index.js doctor --json`. The sibling `../android-kit` repository supplies the schema package and must be built first.
+Install Node.js 24, JDK 21, Android SDK platform-tools, PostgreSQL client tools (`psql` on PATH), Docker and Supabase CLI 2.x. On Windows, use Docker Desktop with WSL2 integration and keep project files on a filesystem accessible to Docker. From this repository, run `npm ci`, `npm run build`, then `node dist/cli/index.js doctor --json`. The sibling `../android-kit` repository supplies the schema package and must be built first.
 
 For a project with a local Supabase configuration, run `backend stack up --json`, `backend stack verify --json`, or `backend run attacks probes.yaml --json`. Each command accepts `--project-root` and `--json`; exit codes are 0 for pass, 1 for fail/flaky, and 2 for blocked/unsupported/error. Attack and race probes currently require explicit assertions and credentials in the supplied local file: do not commit it. Do not use production data or a linked project.
 

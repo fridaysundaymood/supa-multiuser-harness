@@ -14,6 +14,12 @@ export async function doctorChecks() {
     ],
     ['supabase', ['--version'], /^2\./m, 'Install Supabase CLI >=2 <3'],
     [
+      'psql',
+      ['--version'],
+      /psql \(PostgreSQL\) \d+/,
+      'Install PostgreSQL client tools and add psql to PATH',
+    ],
+    [
       'adb',
       ['version'],
       /Android Debug Bridge version/m,
