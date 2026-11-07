@@ -8,4 +8,4 @@
 - Report occupied Supabase startup ports with a configuration remedy without exposing command output.
 - Add a guarded shutdown operation for the local `ak-harness` stack.
 - Add a file-free local default security suite and a non-overwriting starter for application-specific scenarios.
-- Add an opt-in seeded-fixture regression for missing-subject access, disabled RLS, anonymous writes, and write rollback.
+- Add an opt-in seeded-fixture regression for missing-subject access, disabled RLS, anonymous writes, write rollback, and trigger safety (replica-mode write probes; `ENABLE ALWAYS` trigger tables blocked).

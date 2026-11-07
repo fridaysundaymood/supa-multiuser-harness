@@ -41,7 +41,7 @@ Read only the optional `backend` section of `android-kit.yaml`, validated using 
 
 - `backend run scenario` executes ordered or parallel multi-phone steps, checks convergence and member isolation. Bounded reconnect permutations report total, executed and truncation.
 - `backend run attacks` probes discovered tables/RPCs with explicit role, tampered/expired JWT and cross-group expectations.
-- `backend default-suite` (also `backend run attacks` without a file) discovers exposed resources, runs JWT probes and checks anonymous writes in rolled-back transactions without user-authored configuration. Catalog findings requiring review are informational; a passing default suite does not establish cross-tenant, all write, RPC or race safety.
+- `backend default-suite` (also `backend run attacks` without a file) discovers exposed resources, runs JWT probes and checks anonymous writes in rolled-back transactions without user-authored configuration. Anonymous write probes run as superuser in `session_replication_role = replica` with anon RLS applied, so ordinary triggers (audit, pg_net, webhooks) do not fire; tables with `ENABLE ALWAYS` triggers are `blocked`, not probed. Catalog findings requiring review are informational; a passing default suite does not establish cross-tenant, all write, RPC or race safety.
 - `backend init-scenario` creates a non-overwriting starter for explicit, application-specific checks. Credentials and synthetic fixtures remain the operator's responsibility.
 - `backend run races` performs configurable parallel state-changing RPC calls; records seeds, attempts, inputs, ordering, invariant checks, deadlocks and latency percentiles. Seeds do not control thread scheduling; intermittent failures are flaky.
 

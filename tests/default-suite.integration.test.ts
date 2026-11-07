@@ -5,7 +5,7 @@ import { runCatalogAttacks } from '../src/core/catalog-attacks.js';
 import { command, localStatus } from '../src/core/stack.js';
 
 it.skipIf(!process.env.BACKEND_DEFAULT_SUITE_FIXTURE)(
-  'detects catalog and missing-sub defects without retaining probe writes',
+  'detects catalog, trigger and missing-sub defects without retaining probe writes',
   async () => {
     const projectRoot = process.env.BACKEND_DEFAULT_SUITE_FIXTURE as string;
     const config = await readFile(
@@ -46,7 +46,7 @@ it.skipIf(!process.env.BACKEND_DEFAULT_SUITE_FIXTURE)(
         (f) => f.resource === 'public.tasks' && f.check === 'missing sub',
       )?.outcome,
     ).toBe('info');
-    const defect = await readFile(
+    const missingSub = await readFile(
       join(process.cwd(), 'tests', 'fixtures', 'missing-sub-read.sql'),
       'utf8',
     );
@@ -54,40 +54,68 @@ it.skipIf(!process.env.BACKEND_DEFAULT_SUITE_FIXTURE)(
       join(process.cwd(), 'tests', 'fixtures', 'default-suite-defects.sql'),
       'utf8',
     );
+    const triggerDefects = await readFile(
+      join(
+        process.cwd(),
+        'tests',
+        'fixtures',
+        'default-suite-trigger-defects.sql',
+      ),
+      'utf8',
+    );
     let installed = false;
     try {
-      await sql(`begin;\n${defect}\n${catalogDefects}\ncommit;`);
+      await sql(
+        `begin;\n${missingSub}\n${catalogDefects}\n${triggerDefects}\ncommit;`,
+      );
       installed = true;
+      const beforeAudit = await sql(
+        'select count(*) from public.harness_audit',
+      );
       const before = await sql(
         'select count(*) from public.harness_anon_write',
       );
       const result = await runCatalogAttacks({ projectRoot });
       const after = await sql('select count(*) from public.harness_anon_write');
       expect(after).toBe(before);
+      expect(await sql('select count(*) from public.harness_audit')).toBe(
+        beforeAudit,
+      );
       expect(result.status).toBe('fail');
-      expect(
-        result.findings.find(
-          (f) => f.resource === 'public.tasks' && f.check === 'missing sub',
-        )?.outcome,
-      ).toBe('fail');
+      const outcomes = new Map(
+        result.findings.map((f) => [`${f.resource} ${f.check}`, f.outcome]),
+      );
+      expect(outcomes.get('public.tasks missing sub')).toBe('fail');
+      expect(outcomes.get('public.harness_no_rls row level security')).toBe(
+        'fail',
+      );
+      expect(outcomes.get('public.harness_anon_write anonymous write')).toBe(
+        'fail',
+      );
+      // Ordinary trigger suppressed in replica mode: anon INSERT is 'allowed', not 'indeterminate'.
+      const audited = result.findings.filter(
+        (f) =>
+          f.resource === 'public.harness_audited_write' &&
+          f.check === 'anonymous write',
+      );
+      expect(audited.some((f) => f.detail.startsWith('INSERT: allowed'))).toBe(
+        true,
+      );
+      // ENABLE ALWAYS trigger: write probes skipped, reported as blocked with evidence.
+      expect(outcomes.get('public.harness_always_write anonymous write')).toBe(
+        'blocked',
+      );
       expect(
         result.findings.find(
           (f) =>
-            f.resource === 'public.harness_no_rls' &&
-            f.check === 'row level security',
-        )?.outcome,
-      ).toBe('fail');
-      expect(
-        result.findings.find(
-          (f) =>
-            f.resource === 'public.harness_anon_write' &&
+            f.resource === 'public.harness_always_write' &&
             f.check === 'anonymous write',
-        )?.outcome,
-      ).toBe('fail');
+        )?.detail,
+      ).toContain('harness_always_write_audit');
     } finally {
       if (installed)
         await sql(
-          "begin; drop policy defect_missing_sub_task_read on public.tasks; drop table public.harness_no_rls, public.harness_anon_write; notify pgrst, 'reload schema'; commit;",
+          "begin; drop table public.harness_always_write; drop table public.harness_audited_write; drop function public.harness_audit_fn(); drop table public.harness_audit; drop policy defect_missing_sub_task_read on public.tasks; drop table public.harness_no_rls, public.harness_anon_write; notify pgrst, 'reload schema'; commit;",
         );
     }
   },

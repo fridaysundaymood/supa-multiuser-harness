@@ -12,13 +12,19 @@ import {
 } from './stack.js';
 
 export type Catalog = {
-  tables: Array<{ schema: string; name: string; kind: string; rls: boolean }>;
+  tables: Array<{
+    schema: string;
+    name: string;
+    kind: string;
+    rls: boolean;
+    alwaysTriggers?: string[];
+  }>;
   functions: Array<{ schema: string; name: string; securityDefiner: boolean }>;
 };
 type Finding = {
   resource: string;
   check: string;
-  outcome: 'fail' | 'info';
+  outcome: 'fail' | 'info' | 'blocked';
   detail: string;
 };
 
@@ -166,7 +172,7 @@ export async function discoverCatalog(options: StackOptions): Promise<Catalog> {
   const schemaList = schemas
     .map((schema) => `'${String(schema).replaceAll("'", "''")}'`)
     .join(',');
-  const sql = `SELECT json_build_object('tables', COALESCE((SELECT json_agg(json_build_object('schema',n.nspname,'name',c.relname,'kind',c.relkind,'rls',c.relrowsecurity)) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname IN (${schemaList}) AND c.relkind IN ('r','p','v','m')), '[]'::json), 'functions', COALESCE((SELECT json_agg(json_build_object('schema',n.nspname,'name',p.proname,'securityDefiner',p.prosecdef AND has_function_privilege('anon',p.oid,'EXECUTE'))) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname IN (${schemaList})), '[]'::json))`;
+  const sql = `SELECT json_build_object('tables', COALESCE((SELECT json_agg(json_build_object('schema',n.nspname,'name',c.relname,'kind',c.relkind,'rls',c.relrowsecurity,'alwaysTriggers',COALESCE((SELECT json_agg(t.tgname) FROM pg_trigger t WHERE t.tgrelid=c.oid AND NOT t.tgisinternal AND t.tgenabled='A'),'[]'::json))) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname IN (${schemaList}) AND c.relkind IN ('r','p','v','m')), '[]'::json), 'functions', COALESCE((SELECT json_agg(json_build_object('schema',n.nspname,'name',p.proname,'securityDefiner',p.prosecdef AND has_function_privilege('anon',p.oid,'EXECUTE'))) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname IN (${schemaList})), '[]'::json))`;
   const id = config.project_id;
   if (typeof id !== 'string' || !/^[\w.-]+$/.test(id))
     throw new BackendError('Cannot verify local project identity');
@@ -212,14 +218,28 @@ export async function runCatalogAttacks(options: StackOptions) {
   const quote = (value: string) => `'${value.replaceAll("'", "''")}'`;
   for (const table of catalog.tables) {
     if (table.kind !== 'r' && table.kind !== 'p') continue;
+    const resource = `${table.schema}.${table.name}`;
+    if (table.alwaysTriggers?.length) {
+      report.findings.push({
+        resource,
+        check: 'anonymous write',
+        outcome: 'blocked',
+        detail: `ALWAYS-enabled triggers fire in replica mode and may have external effects; write probes skipped: ${table.alwaysTriggers.join(', ')}`,
+      });
+      report.status = report.status === 'fail' ? 'fail' : 'error';
+      continue;
+    }
     const relation = `"${table.schema.replaceAll('"', '""')}"."${table.name.replaceAll('"', '""')}"`;
+    // Superuser session with replica mode: ordinary triggers (pg_net, webhooks, audit) do not fire.
+    // RLS still applies because the probe switches to anon before writing. Everything rolls back.
     const sql = `
 BEGIN;
 CREATE TEMP TABLE harness_write_results (operation text, result text, affected bigint);
 GRANT INSERT ON harness_write_results TO anon;
+SET LOCAL session_replication_role = replica;
 SELECT count(*) FROM ${relation};
 SET LOCAL ROLE anon;
-SET LOCAL request.jwt.claims = '{"role":"anon"}';
+DO $claims$ BEGIN PERFORM set_config('request.jwt.claims', '{"role":"anon"}', true); END $claims$;
 DO $probe$
 DECLARE op text; stmt text; col text; affected bigint; result text;
 BEGIN
@@ -293,15 +313,15 @@ ROLLBACK;`;
       const failed =
         result.result === 'allowed' || result.result === 'indeterminate';
       report.findings.push({
-        resource: `${table.schema}.${table.name}`,
+        resource,
         check: 'anonymous write',
         outcome: failed ? 'fail' : 'info',
-        detail: `${result.operation}: ${result.result}; affected ${result.affected}; before/after row counts ${before}/${after}. Indeterminate granted writes require review.`,
+        detail: `${result.operation}: ${result.result}; affected ${result.affected}; before/after row counts ${before}/${after}. Replica mode (ordinary triggers suppressed), anon RLS applied; rolled back.`,
       });
       if (failed) report.status = 'fail';
     }
   }
   report.coverage +=
-    ' Anonymous writes run in rolled-back database subtransactions; indeterminate granted writes fail conservatively. Triggers and external side effects may not be transactional.';
+    ' Anonymous writes run as superuser in replica mode inside one rolled-back transaction; tables with ALWAYS-enabled triggers are blocked, not probed. Indeterminate granted writes fail conservatively.';
   return report;
 }
