@@ -8,6 +8,8 @@ Install Node.js 24, JDK 21, Android SDK platform-tools, PostgreSQL client tools 
 
 For a project with a local Supabase configuration, run `backend stack up --json`, `backend stack verify --json`, or `backend run attacks probes.yaml --json`. Each command accepts `--project-root` and `--json`; exit codes are 0 for pass, 1 for fail/flaky, and 2 for blocked/unsupported/error. Attack and race probes currently require explicit assertions and credentials in the supplied local file: do not commit it. Do not use production data or a linked project.
 
+`backend stack down` stops only the verified local `ak-harness` project. It refuses linked projects and other project IDs.
+
 A generic MCP client can launch `node` with arguments `["dist/mcp/index.js"]` and this repository as its working directory. MCP tools use the `backend_` prefix and the same operation parameters as the CLI.
 
 The package root exports `toolDefinitions()`, `configSection`, `configSectionSchema`, `supportedSchemaMajors`, `doctor()`, and `status()`. Importing it does not launch MCP. `backend_status` and `status()` report the local stack's running state, local endpoint ports, and applied migration count without changing the stack; linked projects and remote endpoints are refused. The result uses the standard result envelope.

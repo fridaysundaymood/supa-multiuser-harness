@@ -19,6 +19,7 @@ import { mintUser } from './identity.js';
 import {
   runCron,
   stackAt,
+  stackDown,
   stackMigrate,
   stackSeed,
   stackServeFunctions,
@@ -39,6 +40,7 @@ export const operations = [
   'doctor',
   'status',
   'stack_up',
+  'stack_down',
   'stack_verify',
   'stack_at',
   'stack_seed',
@@ -93,6 +95,9 @@ export async function executeOperation(
             ? (options.exclude as string[])
             : undefined,
         });
+        break;
+      case 'stack_down':
+        output = await stackDown({ projectRoot: stackRoot });
         break;
       case 'stack_verify': {
         const result = await stackVerify({

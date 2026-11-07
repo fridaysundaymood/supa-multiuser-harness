@@ -28,10 +28,15 @@ export interface StackOptions {
   linked?: boolean;
 }
 export function startupPortConflict(stderr: string): BackendError | undefined {
-  const conflict = stderr.match(/Bind for (?:\[[^\]]+\]|[\d.]+):(\d{1,5}) failed: port is already allocated/i);
-  return conflict ? new BackendError(`Local port ${conflict[1]} is already allocated; choose a free port in supabase/config.toml`) : undefined;
+  const conflict = stderr.match(
+    /Bind for (?:\[[^\]]+\]|[\d.]+):(\d{1,5}) failed: port is already allocated/i,
+  );
+  return conflict
+    ? new BackendError(
+        `Local port ${conflict[1]} is already allocated; choose a free port in supabase/config.toml`,
+      )
+    : undefined;
 }
-
 
 export async function command(
   program: string,
@@ -47,8 +52,15 @@ export async function command(
       })
     ).stdout;
   } catch (error) {
-    const stderr = error && typeof error === 'object' && 'stderr' in error ? error.stderr : undefined;
-    if (program === 'supabase' && args[0] === 'start' && typeof stderr === 'string') {
+    const stderr =
+      error && typeof error === 'object' && 'stderr' in error
+        ? error.stderr
+        : undefined;
+    if (
+      program === 'supabase' &&
+      args[0] === 'start' &&
+      typeof stderr === 'string'
+    ) {
       const conflict = startupPortConflict(stderr);
       if (conflict) throw conflict;
     }
@@ -172,6 +184,22 @@ export async function stackUp(
     args.push('--exclude', options.exclude.join(','));
   await command('supabase', args, options.projectRoot);
   await localStatus(options);
+}
+export async function stackDown(options: StackOptions): Promise<void> {
+  await ensureUnlinked(options);
+  const config = await readFile(
+    join(resolve(options.projectRoot), 'supabase', 'config.toml'),
+    'utf8',
+  );
+  const projectId = config.match(/^\s*project_id\s*=\s*["']([^"']+)["']/m)?.[1];
+  if (projectId !== 'ak-harness')
+    throw new BackendError('Refusing to stop a project other than ak-harness');
+  await localStatus(options);
+  await command(
+    'supabase',
+    ['stop', '--project-id', 'ak-harness'],
+    options.projectRoot,
+  );
 }
 export async function stackAt(
   options: StackOptions & { version: string },

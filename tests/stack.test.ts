@@ -12,6 +12,7 @@ import {
   normalizeDump,
   runCron,
   stackAt,
+  stackDown,
   stackMigrate,
   stackSeed,
   stackVerify,
@@ -45,6 +46,22 @@ describe('local stack safety', () => {
       stackAt({ projectRoot: '.', version: '20260101', linked: true }),
     ).rejects.toThrow('linked');
   });
+
+  it('refuses to stop a synthetic non-harness project before any CLI call', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'backend-stop-'));
+    try {
+      await mkdir(join(root, 'supabase'));
+      await writeFile(
+        join(root, 'supabase', 'config.toml'),
+        'project_id = "other-project"\n',
+      );
+      await expect(stackDown({ projectRoot: root })).rejects.toThrow(
+        'other than ak-harness',
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
   it('normalizes dump metadata but preserves SQL and schema comments', () => {
     const dump =
       '-- Dumped by pg_dump version 16\r\n\\restrict abc\r\n-- meaningful comment\r\nCREATE TABLE x (id int);\r\n';
@@ -63,7 +80,9 @@ describe('local stack safety', () => {
   });
 
   it('reports a synthetic occupied startup port without exposing stderr', () => {
-    const error = startupPortConflict('secret-value: Bind for 0.0.0.0:12345 failed: port is already allocated');
+    const error = startupPortConflict(
+      'secret-value: Bind for 0.0.0.0:12345 failed: port is already allocated',
+    );
     expect(error).toBeInstanceOf(BackendError);
     expect(error?.message).toContain('12345');
     expect(error?.message).toContain('supabase/config.toml');
