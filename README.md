@@ -12,6 +12,17 @@ For the local `ak-harness` project, run `backend stack up --json`, `backend stac
 
 Each project uses `ak-harness-<project hash>` and a derived six-port block. Set `BACKEND_PORT_BASE` to choose another block if ports conflict. The workdir owner marker must match before destructive operations and probes.
 
+The stack operations use an isolated workdir rather than starting the project's own Supabase directory:
+
+```mermaid
+flowchart LR
+    Project["Project Supabase files"] --> Workdir["Project-specific isolated workdir"]
+    CLI["backend CLI"] --> Operations["Harness operations"]
+    MCP["MCP tools"] --> Operations
+    Operations --> Workdir
+    Workdir --> Stack["Local Supabase stack"]
+```
+
 Inconclusive checks do not fail the default suite by default; the summary calls them out and suggests seeding synthetic rows with a scenario. Use `backend default-suite --strict` or `backend run attacks --strict` to fail on inconclusive checks. MCP callers can pass `strict: true` to `backend_default_suite` or file-free `backend_run_attacks`. Tool failures remain errors and blocked probes remain blocked.
 
 For application-specific checks, create a starter with `backend init-scenario --json` (or `backend init-scenario path/to/scenario.yaml --json`); it does not overwrite an existing file. Edit it for the local application's synthetic data and explicit expectations, then use `backend run attacks probes.yaml --json`, `backend run scenario scenario.yaml --json`, or `backend run races races.yaml --json` as appropriate. Keep credentials out of committed files. Do not use production data or a linked project. Commands accept `--project-root` and `--json`; exit codes are 0 for pass, 1 for fail/flaky, and 2 for blocked/unsupported/error.
@@ -26,6 +37,16 @@ The package root exports `toolDefinitions()`, `configSection`, `configSectionSch
 The `harness-client` Gradle project is a separate Kotlin/JVM library. Use JDK 21 and its wrapper (`harness-client/gradlew`, or `harness-client\gradlew.bat` on Windows) to build it. Include it only in debug or test configurations and route every request through its local endpoint guard. Its simulated devices are not proof of Android app integration.
 
 Generate an overlay with the library API `writeAppBinding(directory, localUrl, apiKey)`. Apply the returned `binding.gradle` to the Android app module and supply `-PHARNESS_BINDING_DIR=<directory>` to Gradle. The overlay configures debug only; it does not route the app's network client through the guard. Add `harness-client` to debug/test dependencies and explicitly call `LocalEndpointGuard.open` for the actual request. Keep the generated properties private.
+
+The debug binding supplies configuration, while the app must explicitly guard its requests:
+
+```mermaid
+flowchart LR
+    Binding["writeAppBinding"] --> Overlay["Debug Gradle overlay"]
+    Overlay --> App["Android debug app"]
+    App --> Guard["LocalEndpointGuard.open"]
+    Guard --> Local["Approved local endpoint"]
+```
 
 Only loopback hosts are allowed by default. The emulator aliases `10.0.2.2` and `10.0.3.2` can refer to non-local hosts outside an emulator: opt in only in a trusted emulator environment. Pass `true` as the fourth argument to `writeAppBinding` to enable the aliases in the binding and debug network configuration, and pass `allowEmulator = true` to `LocalEndpointGuard.open` for the actual client request. For guard integration checks, pass `true` as the third argument to `requireGuardIntegration` as well.
 
