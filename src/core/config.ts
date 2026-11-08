@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { loadConfig } from '@android-kit/schema';
+import { loadConfig } from '@budaknyenyel/kit-schema';
 
 export interface BackendConfig {
   supabaseDir?: string;

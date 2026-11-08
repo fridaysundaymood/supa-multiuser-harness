@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.1.0
+
+- Require explicit emulator opt-in for emulator host aliases in the client guard, binding and debug network configuration; use the client Gradle wrapper and JDK 21.
+- Isolate stacks by project, constrain scenario paths and MCP launch options, and randomize SQL probe delimiters.
+- Publish the npm package under `@budaknyenyel/supa-multiuser-harness`.
 
 - Treat inconclusive default-suite checks as passing unless strict mode is requested, while surfacing their count and scenario guidance.
 - Preserve Supabase CLI state while refreshing isolated stack inputs, and route status and scenario discovery through the isolated workdir.

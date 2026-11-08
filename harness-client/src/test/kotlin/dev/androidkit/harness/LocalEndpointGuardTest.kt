@@ -7,9 +7,19 @@ import kotlin.test.assertFalse
 
 class LocalEndpointGuardTest {
     @Test fun acceptsExplicitLocalHosts() {
-        listOf("http://localhost:54321/rest/v1/tasks", "http://127.0.0.1:54321", "http://10.0.2.2:54321", "http://10.0.3.2:54321", "http://[::1]:54321").forEach {
+        listOf("http://localhost:54321/rest/v1/tasks", "http://127.0.0.1:54321", "http://[::1]:54321").forEach {
             assertEquals(it, LocalEndpointGuard.check(it).toString())
         }
+    }
+
+    @Test fun emulatorAliasesRequireExplicitOptIn() {
+        listOf("http://10.0.2.2:54321", "http://10.0.3.2:54321").forEach {
+            assertFailsWith<IllegalArgumentException>(it) { LocalEndpointGuard.check(it) }
+            assertFailsWith<IllegalArgumentException>(it) { LocalEndpointGuard.open(it) }
+            assertEquals(it, LocalEndpointGuard.check(it, allowEmulator = true).toString())
+            assertFalse(LocalEndpointGuard.open(it, allowEmulator = true).instanceFollowRedirects)
+        }
+        assertFailsWith<IllegalArgumentException> { LocalEndpointGuard.check("http://10.0.2.3", allowEmulator = true) }
     }
 
     @Test fun rejectsRemoteOrAmbiguousEndpoints() {

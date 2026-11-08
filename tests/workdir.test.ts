@@ -3,7 +3,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { BackendError } from '../src/core/stack.js';
-import { prepareWorkdir, rewriteConfig } from '../src/core/workdir.js';
+import {
+  prepareWorkdir,
+  rewriteConfig,
+  workdirIdentity,
+} from '../src/core/workdir.js';
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -89,9 +93,9 @@ describe('harness workdir rewrite', () => {
     );
     const prepared = await prepareWorkdir(root);
     expect(prepared.dir).toContain(join('.android-kit', 'harness-stack'));
-    expect(prepared.projectId).toBe('ak-harness');
-    expect(await readFile(join(prepared.dir, 'config.toml'), 'utf8')).toMatch(
-      /project_id = "ak-harness"/,
+    expect(prepared.projectId).toMatch(/^ak-harness-[0-9a-f]{16}$/);
+    expect(await readFile(join(prepared.dir, 'config.toml'), 'utf8')).toContain(
+      `project_id = "${prepared.projectId}"`,
     );
     expect(await readFile(join(root, 'supabase', 'config.toml'), 'utf8')).toBe(
       synthetic,
@@ -115,9 +119,29 @@ describe('harness isolation guards', () => {
       'project_id = "user-project"\n',
     );
     const prepared = await prepareWorkdir(root);
-    expect(prepared.projectId).toBe('ak-harness');
+    expect(prepared.projectId).toMatch(/^ak-harness-[0-9a-f]{16}$/);
     expect(await readFile(join(root, 'supabase', 'config.toml'), 'utf8')).toBe(
       'project_id = "user-project"\n',
     );
+  });
+
+  it('isolates projects and refuses a copied or altered owner marker', async () => {
+    const first = await mkdtemp(join(tmpdir(), 'harness-owner-'));
+    const second = await mkdtemp(join(tmpdir(), 'harness-owner-'));
+    roots.push(first, second);
+    for (const root of [first, second]) {
+      await mkdir(join(root, 'supabase'));
+      await writeFile(join(root, 'supabase', 'config.toml'), synthetic);
+    }
+    const a = await prepareWorkdir(first);
+    const b = await prepareWorkdir(second);
+    expect(a.projectId).not.toBe(b.projectId);
+    expect(await workdirIdentity(a.root)).toBe(a.projectId);
+    expect(await readFile(join(a.dir, 'config.toml'), 'utf8')).not.toBe(
+      await readFile(join(b.dir, 'config.toml'), 'utf8'),
+    );
+    await writeFile(join(b.root, 'owner'), `${a.projectId}\n`);
+    await expect(workdirIdentity(b.root)).rejects.toThrow('owner marker');
+    await expect(prepareWorkdir(second)).rejects.toThrow('owner marker');
   });
 });

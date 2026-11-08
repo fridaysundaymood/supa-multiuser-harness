@@ -1,23 +1,42 @@
 {
-  "name": "@android-kit/supa-multiuser-harness",
-  "version": "1.0.0",
+  "name": "@budaknyenyel/supa-multiuser-harness",
+  "version": "0.1.0",
   "type": "module",
-  "private": true,
-  "engines": {
-    "node": ">=24 <25"
+  "description": "Local Supabase multiuser security testing harness",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fridaysundaymood/supa-multiuser-harness.git"
   },
+  "homepage": "https://github.com/fridaysundaymood/supa-multiuser-harness#readme",
+  "bugs": {
+    "url": "https://github.com/fridaysundaymood/supa-multiuser-harness/issues"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
   "exports": "./dist/core/index.js",
   "bin": {
     "backend": "./dist/cli/index.js",
     "backend-mcp": "./dist/mcp/index.js"
   },
   "scripts": {
+    "prepublishOnly": "npm run build",
     "build": "tsc -p tsconfig.json",
     "lint": "biome check .",
     "test": "vitest run"
   },
   "dependencies": {
-    "@android-kit/schema": "file:../android-kit/packages/kit-schema",
+    "@budaknyenyel/kit-schema": "file:../android-kit/packages/kit-schema",
     "@modelcontextprotocol/sdk": "^1.25.0",
     "smol-toml": "^1.9.1",
     "yaml": "^2.8.1",

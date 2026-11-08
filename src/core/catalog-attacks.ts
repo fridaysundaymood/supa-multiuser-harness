@@ -268,6 +268,10 @@ export async function runCatalogAttacks(
       continue;
     }
     const relation = `"${table.schema.replaceAll('"', '""')}"."${table.name.replaceAll('"', '""')}"`;
+    let probeTag: string;
+    do {
+      probeTag = `$probe_${randomUUID().replaceAll('-', '')}$`;
+    } while (relation.includes(probeTag));
     // Superuser session with replica mode: ordinary triggers (pg_net, webhooks, audit) do not fire.
     // RLS still applies because the probe switches to anon before writing. Everything rolls back.
     const sql = `
@@ -278,7 +282,7 @@ SET LOCAL session_replication_role = replica;
 SELECT count(*) FROM ${relation};
 SET LOCAL ROLE anon;
 DO $claims$ BEGIN PERFORM set_config('request.jwt.claims', '{"role":"anon"}', true); END $claims$;
-DO $probe$
+DO ${probeTag}
 DECLARE op text; stmt text; col text; affected bigint; result text;
 BEGIN
   SELECT a.attname INTO col FROM pg_attribute a
@@ -311,7 +315,7 @@ BEGIN
     END IF;
     INSERT INTO harness_write_results VALUES (op, result, affected);
   END LOOP;
-END $probe$;
+END ${probeTag};
 RESET ROLE;
 SELECT count(*) FROM ${relation};
 SELECT json_agg(row_to_json(r)) FROM harness_write_results r;

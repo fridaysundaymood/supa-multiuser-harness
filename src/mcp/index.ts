@@ -7,9 +7,14 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { toolDefinitions } from '../core/tools.js';
 
+if (process.argv.includes('--help') || process.argv.includes('-h')) {
+  console.log('Usage: backend-mcp');
+  process.exit(0);
+}
+
 const tools = toolDefinitions();
 const server = new Server(
-  { name: 'backend', version: '1.0.0' },
+  { name: 'backend', version: '0.1.0' },
   { capabilities: { tools: {} } },
 );
 server.setRequestHandler(ListToolsRequestSchema, async () => ({

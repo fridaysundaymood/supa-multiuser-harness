@@ -5,12 +5,13 @@ import { inflateRawSync } from 'node:zlib';
 const localHosts: Record<string, true> = {
   localhost: true,
   '127.0.0.1': true,
-  '10.0.2.2': true,
-  '10.0.3.2': true,
   '[::1]': true,
 };
 
-export function requireLocalEndpoint(endpoint: string): URL {
+export function requireLocalEndpoint(
+  endpoint: string,
+  allowEmulator = false,
+): URL {
   let url: URL;
   try {
     url = new URL(endpoint);
@@ -24,7 +25,10 @@ export function requireLocalEndpoint(endpoint: string): URL {
   if (
     !['http:', 'https:'].includes(url.protocol) ||
     !host ||
-    !Object.hasOwn(localHosts, host) ||
+    !(
+      Object.hasOwn(localHosts, host) ||
+      (allowEmulator === true && (host === '10.0.2.2' || host === '10.0.3.2'))
+    ) ||
     url.hostname !== host ||
     url.username ||
     url.password ||
@@ -39,8 +43,9 @@ export async function writeAppBinding(
   directory: string,
   endpoint: string,
   apiKey: string,
+  allowEmulator = false,
 ): Promise<{ gradleScript: string; properties: string }> {
-  requireLocalEndpoint(endpoint);
+  requireLocalEndpoint(endpoint, allowEmulator);
   if (!apiKey || /[\r\n]/.test(apiKey))
     throw new Error('A single-line API key is required');
   directory = resolve(directory);
@@ -65,7 +70,7 @@ export async function writeAppBinding(
   );
   await writeFile(
     join(debug, 'res', 'xml', 'harness_network_security_config.xml'),
-    `<?xml version="1.0" encoding="utf-8"?>\n<network-security-config>\n  <base-config cleartextTrafficPermitted="false" />\n  <domain-config cleartextTrafficPermitted="true">\n    <domain>localhost</domain>\n    <domain>127.0.0.1</domain>\n    <domain>10.0.2.2</domain>\n    <domain>10.0.3.2</domain>\n    <domain>::1</domain>\n  </domain-config>\n</network-security-config>\n`,
+    `<?xml version="1.0" encoding="utf-8"?>\n<network-security-config>\n  <base-config cleartextTrafficPermitted="false" />\n  <domain-config cleartextTrafficPermitted="true">\n    <domain>localhost</domain>\n    <domain>127.0.0.1</domain>\n${allowEmulator === true ? '    <domain>10.0.2.2</domain>\n    <domain>10.0.3.2</domain>\n' : ''}    <domain>::1</domain>\n  </domain-config>\n</network-security-config>\n`,
   );
   return { gradleScript, properties };
 }
@@ -82,8 +87,9 @@ export type GuardChallenge = (
 export async function requireGuardIntegration(
   endpoint: string,
   challenge?: GuardChallenge,
+  allowEmulator = false,
 ): Promise<void> {
-  requireLocalEndpoint(endpoint);
+  requireLocalEndpoint(endpoint, allowEmulator);
   if (!challenge)
     throw new Error('App client guard integration is unavailable');
   if (

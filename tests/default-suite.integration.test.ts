@@ -3,24 +3,20 @@ import { join } from 'node:path';
 import { expect, it } from 'vitest';
 import { runCatalogAttacks } from '../src/core/catalog-attacks.js';
 import { command, localStatus } from '../src/core/stack.js';
+import { workdirIdentity } from '../src/core/workdir.js';
 
 it.skipIf(!process.env.BACKEND_DEFAULT_SUITE_FIXTURE)(
   'detects catalog, trigger and missing-sub defects without retaining probe writes',
   async () => {
     const projectRoot = process.env.BACKEND_DEFAULT_SUITE_FIXTURE as string;
-    const config = await readFile(
-      join(projectRoot, 'supabase', 'config.toml'),
-      'utf8',
-    );
-    if (!/^project_id\s*=\s*["']ak-harness["']/m.test(config))
-      throw new Error('Integration test requires the owned ak-harness project');
+    const projectId = await workdirIdentity(projectRoot);
     await localStatus({ projectRoot });
     const sql = async (statement: string) =>
       command(
         'docker',
         [
           'exec',
-          'supabase_db_ak-harness',
+          `supabase_db_${projectId}`,
           'psql',
           '-U',
           'postgres',

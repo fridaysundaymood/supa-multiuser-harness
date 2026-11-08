@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { rmSync } from 'node:fs';
 import {
   access,
   cp,
@@ -14,7 +15,7 @@ import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
-import { defaultExcludedServices, harnessProjectId } from './workdir.js';
+import { defaultExcludedServices, workdirIdentity } from './workdir.js';
 
 const exec = promisify(execFile);
 export function commandExecutable(program: string): string {
@@ -93,8 +94,9 @@ export function assertLocalUrl(value: string, protocols: string[]): void {
   )
     throw new BackendError('Refusing non-local stack endpoint');
 }
-export async function localStatus(
+async function checkedStatus(
   options: StackOptions,
+  initializing = false,
 ): Promise<Record<string, string>> {
   if (options.linked) throw new BackendError('Refusing linked project');
   const root = resolve(options.projectRoot);
@@ -106,6 +108,11 @@ export async function localStatus(
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
   }
   await access(join(root, 'supabase', 'config.toml'));
+  const expectedId = await workdirIdentity(root);
+  const config = await readFile(join(root, 'supabase', 'config.toml'), 'utf8');
+  const projectId = config.match(/^\s*project_id\s*=\s*["']([^"']+)["']/m)?.[1];
+  if (projectId !== expectedId)
+    throw new BackendError('Cannot verify local project identity');
   let status: Record<string, string>;
   try {
     status = JSON.parse(
@@ -118,14 +125,8 @@ export async function localStatus(
   }
   assertLocalUrl(status.DB_URL, ['postgres:', 'postgresql:']);
   if (status.API_URL) assertLocalUrl(status.API_URL, ['http:', 'https:']);
-  const config = await readFile(join(root, 'supabase', 'config.toml'), 'utf8');
-  const projectId = config.match(/^\s*project_id\s*=\s*["']([^"']+)["']/m)?.[1];
-  if (!projectId || !/^[\w.-]+$/.test(projectId))
+  if (!projectId)
     throw new BackendError('Cannot verify local project identity');
-  if (projectId !== harnessProjectId)
-    throw new BackendError(
-      `Refusing Supabase project "${projectId}"; only "${harnessProjectId}" may be operated`,
-    );
   try {
     const details = JSON.parse(
       await command('docker', ['inspect', `supabase_db_${projectId}`], root),
@@ -178,7 +179,52 @@ export async function localStatus(
       );
     }
   }
+  let owner: string;
+  try {
+    owner = await command(
+      'psql',
+      [
+        '-At',
+        '-v',
+        'ON_ERROR_STOP=1',
+        '-c',
+        "SELECT shobj_description(oid, 'pg_database') FROM pg_database WHERE datname = current_database()",
+        status.DB_URL,
+      ],
+      root,
+    );
+  } catch {
+    throw new BackendError('Cannot verify database owner marker');
+  }
+  if (
+    owner.trim() !== `harness-owner:${expectedId}` &&
+    !(initializing && !owner.trim())
+  )
+    throw new BackendError('Cannot verify database owner marker');
   return status;
+}
+export async function localStatus(
+  options: StackOptions,
+): Promise<Record<string, string>> {
+  return checkedStatus(options);
+}
+
+async function markDatabase(
+  options: StackOptions,
+  status: Record<string, string>,
+  id: string,
+): Promise<void> {
+  await command(
+    'psql',
+    [
+      '-v',
+      'ON_ERROR_STOP=1',
+      '-c',
+      `COMMENT ON DATABASE postgres IS 'harness-owner:${id}'`,
+      status.DB_URL,
+    ],
+    options.projectRoot,
+  );
 }
 async function ensureUnlinked(options: StackOptions): Promise<void> {
   if (options.linked) throw new BackendError('Refusing linked project');
@@ -196,30 +242,59 @@ export async function stackUp(
   options: StackOptions & { exclude?: string[] },
 ): Promise<void> {
   await ensureUnlinked(options);
+  const expectedId = await workdirIdentity(options.projectRoot);
+  const config = await readFile(
+    join(options.projectRoot, 'supabase', 'config.toml'),
+    'utf8',
+  );
+  if (
+    config.match(/^\s*project_id\s*=\s*["']([^"']+)["']/m)?.[1] !== expectedId
+  )
+    throw new BackendError('Cannot verify local project identity');
+  const existing = await command(
+    'docker',
+    [
+      'ps',
+      '-a',
+      '--filter',
+      `name=^/supabase_db_${expectedId}$`,
+      '--format',
+      '{{.Names}}',
+    ],
+    options.projectRoot,
+  );
+  if (existing.trim()) await localStatus(options);
   const args = ['start'];
   const exclude = options.exclude?.length
     ? options.exclude
     : defaultExcludedServices;
   args.push('--exclude', exclude.join(','));
   await command('supabase', args, options.projectRoot);
-  await localStatus(options);
+  if (existing.trim()) {
+    await localStatus(options);
+  } else {
+    const status = await checkedStatus(options, true);
+    await markDatabase(options, status, expectedId);
+    await localStatus(options);
+  }
 }
 export async function stackDown(options: StackOptions): Promise<void> {
   await ensureUnlinked(options);
+  const expectedId = await workdirIdentity(options.projectRoot);
   const config = await readFile(
     join(resolve(options.projectRoot), 'supabase', 'config.toml'),
     'utf8',
   );
   const projectId = config.match(/^\s*project_id\s*=\s*["']([^"']+)["']/m)?.[1];
-  if (projectId !== 'ak-harness')
-    throw new BackendError('Refusing to stop a project other than ak-harness');
+  if (projectId !== expectedId)
+    throw new BackendError('Cannot verify local project identity');
   const containers = await command(
     'docker',
     [
       'ps',
       '-a',
       '--filter',
-      'name=^/supabase_.*_ak-harness$',
+      `name=^/supabase_.*_${expectedId}$`,
       '--format',
       '{{.Names}}',
     ],
@@ -229,7 +304,7 @@ export async function stackDown(options: StackOptions): Promise<void> {
   await localStatus(options);
   await command(
     'supabase',
-    ['stop', '--project-id', 'ak-harness'],
+    ['stop', '--project-id', expectedId],
     options.projectRoot,
   );
 }
@@ -238,12 +313,14 @@ export async function stackAt(
 ): Promise<void> {
   if (!/^\d+$/.test(options.version))
     throw new BackendError('Invalid migration version');
-  await localStatus(options);
+  const status = await localStatus(options);
+  const projectId = await workdirIdentity(options.projectRoot);
   await command(
     'supabase',
     ['db', 'reset', '--local', '--no-seed', '--version', options.version],
     options.projectRoot,
   );
+  await markDatabase(options, status, projectId);
 }
 export async function stackMigrate(options: StackOptions): Promise<void> {
   await localStatus(options);
@@ -296,6 +373,19 @@ export async function stackServeFunctions(
       'unsupported',
     );
   const dir = await mkdtemp(join(tmpdir(), 'backend-functions-'));
+  const cleanup = () => rmSync(dir, { recursive: true, force: true });
+  const onInterrupt = () => {
+    cleanup();
+    process.removeListener('SIGINT', onInterrupt);
+    process.kill(process.pid, 'SIGINT');
+  };
+  const onTerminate = () => {
+    cleanup();
+    process.removeListener('SIGTERM', onTerminate);
+    process.kill(process.pid, 'SIGTERM');
+  };
+  process.once('SIGINT', onInterrupt);
+  process.once('SIGTERM', onTerminate);
   try {
     const envPath = join(dir, 'local.env');
     await writeFile(
@@ -309,6 +399,8 @@ export async function stackServeFunctions(
       options.projectRoot,
     );
   } finally {
+    process.removeListener('SIGINT', onInterrupt);
+    process.removeListener('SIGTERM', onTerminate);
     await rm(dir, { recursive: true, force: true });
   }
 }

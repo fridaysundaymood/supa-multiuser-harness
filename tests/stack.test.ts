@@ -19,6 +19,7 @@ import {
   startupPortConflict,
 } from '../src/core/stack.js';
 import { status } from '../src/core/tools.js';
+import { prepareWorkdir, workdirIdentity } from '../src/core/workdir.js';
 
 describe('local stack safety', () => {
   it('accepts loopback and rejects remote or deceptive endpoints', () => {
@@ -56,8 +57,31 @@ describe('local stack safety', () => {
         'project_id = "other-project"\n',
       );
       await expect(stackDown({ projectRoot: root })).rejects.toThrow(
-        'other than ak-harness',
+        'unowned harness workdir',
       );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+  it('rejects a foreign owner before reset, cron, stop or probe', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'backend-owner-'));
+    try {
+      await mkdir(join(root, 'supabase'));
+      await writeFile(
+        join(root, 'supabase', 'config.toml'),
+        'project_id = "source"\n',
+      );
+      const workdir = await prepareWorkdir(root);
+      await writeFile(join(workdir.root, 'owner'), 'ak-harness-foreign\n');
+      const options = { projectRoot: workdir.root };
+      await expect(
+        stackAt({ ...options, version: '20260101' }),
+      ).rejects.toThrow('owner marker');
+      await expect(runCron({ ...options, sql: 'select 1' })).rejects.toThrow(
+        'owner marker',
+      );
+      await expect(stackDown(options)).rejects.toThrow('owner marker');
+      await expect(localStatus(options)).rejects.toThrow('owner marker');
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -94,14 +118,7 @@ describe('local stack safety', () => {
     'executes seed and cron SQL and reports migration status',
     async () => {
       const projectRoot = process.env.BACKEND_VERIFY_FIXTURE as string;
-      const text = await readFile(
-        join(projectRoot, 'supabase', 'config.toml'),
-        'utf8',
-      );
-      if (!/^project_id\s*=\s*["']ak-harness["']/m.test(text))
-        throw new Error(
-          'Integration test requires the owned ak-harness project',
-        );
+      await workdirIdentity(projectRoot);
       await localStatus({ projectRoot });
       const seedDir = join(projectRoot, 'supabase', 'seeds');
       const scenario = `harness-${randomUUID()}`;
@@ -111,7 +128,9 @@ describe('local stack safety', () => {
         await writeFile(seedPath, 'select 1;\n', { flag: 'wx' });
         await stackSeed({ projectRoot, scenario });
         await runCron({ projectRoot, sql: 'select 1' });
-        expect((await status({ projectRoot })).status).toBe('pass');
+        expect(
+          (await status({ projectRoot: join(projectRoot, '..', '..') })).status,
+        ).toBe('pass');
         expect(
           (await doctorChecks()).find((check) => check.command === 'psql'),
         ).toMatchObject({ ok: true });
@@ -126,14 +145,7 @@ describe('local stack safety', () => {
     'compares a clean local fixture and reports schema drift',
     async () => {
       const projectRoot = process.env.BACKEND_VERIFY_FIXTURE as string;
-      const text = await readFile(
-        join(projectRoot, 'supabase', 'config.toml'),
-        'utf8',
-      );
-      if (!/^project_id\s*=\s*["']ak-harness["']/m.test(text))
-        throw new Error(
-          'Integration test requires the owned ak-harness project',
-        );
+      const projectId = await workdirIdentity(projectRoot);
       await localStatus({ projectRoot });
       const artifactDir = await mkdtemp(join(tmpdir(), 'backend-verify-test-'));
       let altered = false;
@@ -144,7 +156,7 @@ describe('local stack safety', () => {
           'docker',
           [
             'exec',
-            'supabase_db_ak-harness',
+            `supabase_db_${projectId}`,
             'psql',
             '-U',
             'postgres',
@@ -169,7 +181,7 @@ describe('local stack safety', () => {
             'docker',
             [
               'exec',
-              'supabase_db_ak-harness',
+              `supabase_db_${projectId}`,
               'psql',
               '-U',
               'postgres',

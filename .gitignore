@@ -12,6 +12,13 @@ coverage/
 artifacts/
 .android-kit/
 .gradle/
+.kotlin/
+.idea/
+.vscode/
+*.jks
+*.keystore
+*.pem
+*.p12
 build/
 local.properties
 *.apk

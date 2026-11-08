@@ -50,8 +50,6 @@ describe('app binding', () => {
     for (const value of [
       'http://localhost:54321',
       'http://127.0.0.1',
-      'http://10.0.2.2',
-      'http://10.0.3.2',
       'http://[::1]',
     ])
       expect(() => requireLocalEndpoint(value)).not.toThrow();
@@ -65,12 +63,19 @@ describe('app binding', () => {
     ])
       expect(() => requireLocalEndpoint(value)).toThrow();
   });
+  it('requires explicit opt-in for emulator aliases', () => {
+    for (const value of ['http://10.0.2.2', 'http://10.0.3.2']) {
+      expect(() => requireLocalEndpoint(value)).toThrow();
+      expect(() => requireLocalEndpoint(value, true)).not.toThrow();
+    }
+    expect(() => requireLocalEndpoint('http://10.0.2.3', true)).toThrow();
+  });
   it('writes a path-independent debug-only overlay with private properties', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'binding-'));
     try {
       const result = await writeAppBinding(
         dir,
-        'http://10.0.2.2:54321',
+        'http://127.0.0.1:54321',
         'key:secret',
       );
       const script = await readFile(result.gradleScript, 'utf8');
@@ -86,7 +91,25 @@ describe('app binding', () => {
         'utf8',
       );
       expect(security).toContain('cleartextTrafficPermitted="false"');
-      expect(security).toContain('<domain>10.0.2.2</domain>');
+      expect(security).not.toContain('<domain>10.0.2.2</domain>');
+      expect(security).not.toContain('<domain>10.0.3.2</domain>');
+      await expect(
+        writeAppBinding(dir, 'http://10.0.2.2:54321', 'key'),
+      ).rejects.toThrow();
+      await writeAppBinding(dir, 'http://10.0.2.2:54321', 'key', true);
+      const emulatorSecurity = await readFile(
+        join(dir, 'debug/res/xml/harness_network_security_config.xml'),
+        'utf8',
+      );
+      expect(emulatorSecurity).toContain('<domain>10.0.2.2</domain>');
+      expect(emulatorSecurity).toContain('<domain>10.0.3.2</domain>');
+      await writeAppBinding(dir, 'http://127.0.0.1:54321', 'key');
+      expect(
+        await readFile(
+          join(dir, 'debug/res/xml/harness_network_security_config.xml'),
+          'utf8',
+        ),
+      ).not.toContain('<domain>10.0.2.2</domain>');
       await expect(
         writeAppBinding(dir, 'https://remote.example', 'key'),
       ).rejects.toThrow();
@@ -107,6 +130,16 @@ describe('app binding', () => {
         : 'local-request-completed';
     });
     expect(calls).toEqual(['http://127.0.0.1', 'https://example.invalid']);
+    const challenge = async (endpoint: string) =>
+      endpoint.includes('example.invalid')
+        ? ('guard-rejected' as const)
+        : ('local-request-completed' as const);
+    await expect(
+      requireGuardIntegration('http://10.0.2.2', challenge),
+    ).rejects.toThrow();
+    await expect(
+      requireGuardIntegration('http://10.0.2.2', challenge, true),
+    ).resolves.toBeUndefined();
     await expect(
       requireGuardIntegration(
         'http://127.0.0.1',

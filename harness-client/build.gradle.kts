@@ -1,13 +1,11 @@
 plugins {
     kotlin("jvm") version "2.4.21"
-    `maven-publish`
 }
 
 group = "dev.androidkit"
 version = "0.1.0"
 
-kotlin { jvmToolchain(17) }
-java { withSourcesJar() }
+kotlin { jvmToolchain(21) }
 
 dependencies {
     testImplementation(kotlin("test-junit"))
@@ -15,8 +13,3 @@ dependencies {
 }
 tasks.test { useJUnit() }
 
-publishing {
-    publications {
-        create<MavenPublication>("library") { from(components["java"]) }
-    }
-}

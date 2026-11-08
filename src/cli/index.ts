@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { exitCodeFor } from '@android-kit/schema';
+import { exitCodeFor } from '@budaknyenyel/kit-schema';
 import {
   executeOperation,
   type Operation,
@@ -7,6 +7,12 @@ import {
 } from '../core/operations.js';
 
 const args = process.argv.slice(2);
+if (args.includes('--help') || args.includes('-h')) {
+  console.log(
+    `Usage: backend <command> [options]\nCommands: ${operations.map((name) => name.replaceAll('_', ' ')).join(', ')}`,
+  );
+  process.exit(0);
+}
 const json = args.includes('--json');
 const words: string[] = [];
 const options: Record<string, unknown> = {};

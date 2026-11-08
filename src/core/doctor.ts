@@ -6,7 +6,7 @@ const exec = promisify(execFile);
 
 export async function doctorChecks() {
   const commands: Array<[string, string[], RegExp, string]> = [
-    [process.execPath, ['--version'], /^v24\./m, 'Install Node.js 24 LTS'],
+    ['node', ['--version'], /^v24\./m, 'Install Node.js 24 LTS'],
     [
       'docker',
       ['info', '--format', '{{.ServerVersion}}'],

@@ -1,4 +1,5 @@
-import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { cp, mkdir, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { parse as parseToml } from 'smol-toml';
 import { BackendError } from './stack.js';
@@ -18,6 +19,42 @@ export const harnessPorts: Record<string, number> = {
 
 /** Services excluded by default: the mail service binds a fixed host port the pinned CLI does not let us move. */
 export const defaultExcludedServices = ['mailpit', 'inbucket'];
+
+export async function projectIdentity(projectRoot: string): Promise<string> {
+  const root = await realpath(projectRoot);
+  return `ak-harness-${createHash('sha256').update(root).digest('hex').slice(0, 16)}`;
+}
+
+export async function workdirIdentity(workdir: string): Promise<string> {
+  const root = await realpath(resolve(workdir, '..', '..'));
+  if ((await realpath(workdir)) !== join(root, '.android-kit', 'harness-stack'))
+    throw new BackendError('Refusing an unowned harness workdir');
+  const id = await projectIdentity(root);
+  let marker: string;
+  try {
+    marker = await readFile(join(workdir, 'owner'), 'utf8');
+  } catch {
+    throw new BackendError('Cannot verify harness owner marker');
+  }
+  if (marker !== `${id}\n`)
+    throw new BackendError('Cannot verify harness owner marker');
+  return id;
+}
+
+function portsForProject(id: string): Record<string, number> {
+  const configured = process.env.BACKEND_PORT_BASE;
+  const base =
+    configured === undefined
+      ? 20000 + (parseInt(id.slice(-8), 16) % 7000) * 6
+      : Number(configured);
+  if (!Number.isInteger(base) || base < 1024 || base > 65530)
+    throw new BackendError(
+      'BACKEND_PORT_BASE must be an integer from 1024 to 65530',
+    );
+  return Object.fromEntries(
+    Object.keys(harnessPorts).map((key, index) => [key, base + index]),
+  );
+}
 
 /** Sections the pinned CLI (2.75) cannot parse; removing them only affects the local mailer or schema-diff engine. */
 const unsupportedSections = ['local_smtp', 'experimental.pgdelta'];
@@ -47,6 +84,7 @@ function sectionOf(line: string): string | undefined {
 export function rewriteConfig(
   source: string,
   expectedId: string = harnessProjectId,
+  ports: Record<string, number> = harnessPorts,
 ): { text: string; info: string[] } {
   try {
     parseToml(source);
@@ -95,7 +133,7 @@ export function rewriteConfig(
     }
     const port = /^(\s*port\s*=\s*)(\d+)(.*)$/.exec(line);
     const key = `${section}.port`;
-    const mapped = port ? harnessPorts[key] : undefined;
+    const mapped = port ? ports[key] : undefined;
     if (port && mapped !== undefined) {
       info.push(`${key} ${port[2]} -> ${mapped}`);
       out.push(`${port[1]}${mapped}${port[3]}`);
@@ -103,7 +141,7 @@ export function rewriteConfig(
     }
     const shadow = /^(\s*shadow_port\s*=\s*)(\d+)(.*)$/.exec(line);
     if (shadow && section === 'db') {
-      const next = harnessPorts['db.shadow_port'];
+      const next = ports['db.shadow_port'];
       info.push(`db.shadow_port ${shadow[2]} -> ${next}`);
       out.push(`${shadow[1]}${next}${shadow[3]}`);
       continue;
@@ -117,13 +155,15 @@ export function rewriteConfig(
 /** Sync project inputs into the isolated workdir without disturbing CLI state. */
 export async function prepareWorkdir(
   projectRoot: string,
-  expectedId: string = harnessProjectId,
 ): Promise<PreparedWorkdir> {
-  const source = resolve(projectRoot, 'supabase');
-  const base = resolve(projectRoot, '.android-kit', 'harness-stack');
+  const canonicalRoot = await realpath(projectRoot);
+  const expectedId = await projectIdentity(canonicalRoot);
+  const source = resolve(canonicalRoot, 'supabase');
+  const base = resolve(canonicalRoot, '.android-kit', 'harness-stack');
   const rewritten = rewriteConfig(
     await readFile(join(source, 'config.toml'), 'utf8'),
     expectedId,
+    portsForProject(expectedId),
   );
   const parsedId = parseToml(rewritten.text).project_id;
   if (parsedId !== expectedId)
@@ -131,6 +171,13 @@ export async function prepareWorkdir(
       `Refusing Supabase project "${String(parsedId)}"; only "${expectedId}" may be started`,
     );
   const dir = join(base, 'supabase');
+  await mkdir(base, { recursive: true });
+  try {
+    await writeFile(join(base, 'owner'), `${expectedId}\n`, { flag: 'wx' });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+  }
+  await workdirIdentity(base);
   await mkdir(dir, { recursive: true });
   for (const name of ['migrations', 'seeds', 'seed.sql', 'functions']) {
     const target = join(dir, name);

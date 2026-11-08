@@ -1,5 +1,5 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { relative, resolve } from 'node:path';
+import { mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
+import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import {
   createResult,
   newRunId,
@@ -7,7 +7,7 @@ import {
   runArtifactDir,
   type Status,
   writeArtifactIndex,
-} from '@android-kit/schema';
+} from '@budaknyenyel/kit-schema';
 import { parse } from 'yaml';
 import {
   type AutomaticAttackOptions,
@@ -75,6 +75,29 @@ const STACK_OPERATIONS = new Set<string>([
   'run_races',
   'run_cron',
 ]);
+
+async function containedFile(
+  root: string,
+  file: string,
+  creating: boolean,
+): Promise<string> {
+  const target = resolve(root, file);
+  const inside = (base: string, path: string) => {
+    const rel = relative(base, path);
+    return rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel);
+  };
+  if (!inside(root, target))
+    throw Object.assign(new Error('File must be inside the project root'), {
+      status: 'blocked',
+    });
+  const realRoot = await realpath(root);
+  const actual = await realpath(creating ? dirname(target) : target);
+  if (!inside(realRoot, actual))
+    throw Object.assign(new Error('File must be inside the project root'), {
+      status: 'blocked',
+    });
+  return target;
+}
 export async function executeOperation(
   operation: Operation,
   options: Record<string, unknown> = {},
@@ -97,6 +120,21 @@ export async function executeOperation(
       throw Object.assign(new Error('Linked projects are forbidden'), {
         status: 'blocked',
       });
+    const file =
+      operation === 'init_scenario'
+        ? await containedFile(
+            projectRoot,
+            typeof options.file === 'string'
+              ? options.file
+              : 'harness-scenario.yaml',
+            true,
+          )
+        : (operation === 'run_scenario' ||
+              operation === 'run_attacks' ||
+              operation === 'run_races') &&
+            typeof options.file === 'string'
+          ? await containedFile(projectRoot, options.file, false)
+          : undefined;
     const config = await readBackendConfig(projectRoot);
     const sourceRoot = config.supabaseDir
       ? resolve(projectRoot, config.supabaseDir)
@@ -177,11 +215,7 @@ export async function executeOperation(
         break;
       case 'init_scenario': {
         const catalog = await discoverCatalog({ projectRoot: stackRoot });
-        const file =
-          typeof options.file === 'string'
-            ? options.file
-            : 'harness-scenario.yaml';
-        const target = resolve(projectRoot, file);
+        const target = file!;
         const resources = [
           ...catalog.tables.map(
             (table) =>
@@ -245,9 +279,7 @@ export async function executeOperation(
             { status: 'unsupported' },
           );
         }
-        const definition: unknown = parse(
-          await readFile(resolve(projectRoot, options.file), 'utf8'),
-        );
+        const definition: unknown = parse(await readFile(file!, 'utf8'));
         if (operation === 'run_scenario')
           output = await runScenario(definition as ScenarioOptions);
         else if (operation === 'run_attacks')

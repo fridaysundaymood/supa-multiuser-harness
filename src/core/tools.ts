@@ -1,5 +1,5 @@
 import { resolve } from 'node:path';
-import { createResult, newRunId, type Result } from '@android-kit/schema';
+import { createResult, newRunId, type Result } from '@budaknyenyel/kit-schema';
 import { readBackendConfig } from './config.js';
 import { executeOperation, operations } from './operations.js';
 import { assertLocalUrl, BackendError, command, localStatus } from './stack.js';
@@ -106,7 +106,6 @@ export function doctor(options: Record<string, unknown> = {}): Promise<Result> {
 const inputSchema = {
   type: 'object' as const,
   properties: {
-    projectRoot: { type: 'string' },
     file: {
       type: 'string',
       description:
@@ -124,6 +123,7 @@ const inputSchema = {
       description: 'Fail the default suite on inconclusive checks.',
     },
   },
+  additionalProperties: false,
 };
 
 export function toolDefinitions(options: Record<string, unknown> = {}) {
@@ -140,7 +140,15 @@ export function toolDefinitions(options: Record<string, unknown> = {}) {
     inputSchema,
     handler: (input: Record<string, unknown> = {}) =>
       operation === 'status'
-        ? status({ ...options, ...input })
-        : executeOperation(operation, { ...options, ...input }),
+        ? status({
+            ...input,
+            ...options,
+            projectRoot: options.projectRoot ?? process.cwd(),
+          })
+        : executeOperation(operation, {
+            ...input,
+            ...options,
+            projectRoot: options.projectRoot ?? process.cwd(),
+          }),
   }));
 }
