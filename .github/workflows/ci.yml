@@ -33,7 +33,7 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 21
+          java-version: 17
       - run: npm ci --include-workspace-root --workspace=@android-kit/schema && npm run build --workspace=@android-kit/schema
         working-directory: android-kit
       - run: npm ci
