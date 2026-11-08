@@ -2,6 +2,7 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  realpath,
   rm,
   symlink,
   writeFile,
@@ -97,6 +98,7 @@ it('keeps CLI state and uses an isolated config across up, status, verify and do
     'utf8',
   );
   const id = await projectIdentity(root);
+  const canonicalIsolated = await realpath(isolated);
   expect(rewritten).toContain(`project_id = "${id}"`);
   expect(rewritten).toContain('port = 57321');
   expect(rewritten).toContain('port = 57322');
@@ -108,7 +110,7 @@ it('keeps CLI state and uses an isolated config across up, status, verify and do
       (call) =>
         call.args[0] === 'stop' &&
         call.args.includes(id) &&
-        call.cwd === isolated,
+        call.cwd === canonicalIsolated,
     ),
   ).toBe(true);
   expect(cliCalls.every((call) => call.cwd !== root)).toBe(true);
