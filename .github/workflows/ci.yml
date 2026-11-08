@@ -32,7 +32,7 @@ jobs:
       - uses: actions/setup-java@dded0888837ed1f317902acf8a20df0ad188d165 # v4.7.1
         with:
           distribution: temurin
-          java-version: 21
+          java-version: 17
       - run: npm ci --include-workspace-root --workspace=@budaknyenyel/kit-schema && npm run build --workspace=@budaknyenyel/kit-schema
         working-directory: android-kit
       - run: npm ci
@@ -41,5 +41,5 @@ jobs:
         working-directory: supa-multiuser-harness
       - name: Kotlin JVM tests
         shell: bash
-        run: ./harness-client/gradlew --no-daemon -p harness-client test
+        run: bash ./harness-client/gradlew --no-daemon -p harness-client test
         working-directory: supa-multiuser-harness
