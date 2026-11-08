@@ -27,6 +27,21 @@ Inconclusive checks do not fail the default suite by default; the summary calls 
 
 For application-specific checks, create a starter with `backend init-scenario --json` (or `backend init-scenario path/to/scenario.yaml --json`); it does not overwrite an existing file. Edit it for the local application's synthetic data and explicit expectations, then use `backend run attacks probes.yaml --json`, `backend run scenario scenario.yaml --json`, or `backend run races races.yaml --json` as appropriate. Keep credentials out of committed files. Do not use production data or a linked project. Commands accept `--project-root` and `--json`; exit codes are 0 for pass, 1 for fail/flaky, and 2 for blocked/unsupported/error.
 
+The default suite discovers checks from the local catalog; scenario checks run the requests and assertions you define. An explicit attacks file can also supply probes or policies, and race checks use a separate options file.
+
+```mermaid
+flowchart TD
+    Default["default-suite or file-free run attacks"] --> Catalog["Discover local catalog"]
+    Catalog --> JWT["JWT probes against local API"]
+    Catalog --> Writes["Anonymous write probes rolled back"]
+    Catalog --> Review["RPC privilege review findings"]
+    Scenario["run scenario with scenario file"] --> Requests["Defined HTTP requests and assertions"]
+    Scenario --> Reconnect["Optional bounded reconnect orderings"]
+    Reconnect --> Requests
+    Attacks["run attacks with probes file"] --> Probes["Defined probes or policies"]
+    Races["run races with race file"] --> RaceChecks["Configured race checks"]
+```
+
 `backend stack down` stops only the verified local project-specific harness stack. It refuses linked projects and other project IDs.
 
 A generic MCP client can launch `node` with arguments `["dist/mcp/index.js"]` and this repository as its working directory. MCP tools use the `backend_` prefix and the same operation parameters as the CLI.
