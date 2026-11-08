@@ -33,7 +33,7 @@ jobs:
         with:
           distribution: temurin
           java-version: 21
-      - run: npm install && npm run build
+      - run: npm ci --workspace=@android-kit/schema && npm run build --workspace=@android-kit/schema
         working-directory: android-kit
       - run: npm ci
         working-directory: supa-multiuser-harness
